@@ -113,6 +113,45 @@ func TestLoad_FileNotFound(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLoad_ZeroPollInterval(t *testing.T) {
+	f := writeTemp(t, `
+account:
+  host: imap.example.com
+  username: user@example.com
+  password: secret
+  port: 993
+  poll_interval: 0s
+telegram:
+  bot_token: "token"
+  chat_id: 1
+`)
+	_, err := Load(f)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "poll_interval")
+}
+
+func TestLoad_ZeroChatID(t *testing.T) {
+	f := writeTemp(t, `
+account:
+  host: imap.example.com
+  username: user@example.com
+  password: secret
+  port: 993
+telegram:
+  bot_token: "token"
+  chat_id: 0
+`)
+	_, err := Load(f)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "chat_id")
+}
+
+func TestLoad_InvalidYAML(t *testing.T) {
+	f := writeTemp(t, `{this is not: [valid yaml`)
+	_, err := Load(f)
+	require.Error(t, err)
+}
+
 func writeTemp(t *testing.T, content string) string {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "config-*.yaml")

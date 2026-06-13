@@ -66,3 +66,36 @@ func TestNormaliseKVs_EvenLength(t *testing.T) {
 	kvs := normaliseKVs([]any{"key", "val"})
 	assert.Len(t, kvs, 2)
 }
+
+func TestWrap_Unwrap(t *testing.T) {
+	inner := New(context.Background(), "inner")
+	outer := Wrap(context.Background(), inner, "outer")
+	unwrapped, ok := outer.(Unwrapped)
+	require.True(t, ok)
+	assert.Equal(t, inner, unwrapped.Unwrap())
+}
+
+func TestWrap_ContextPropagation(t *testing.T) {
+	type key struct{}
+	ctx := context.WithValue(context.Background(), key{}, "sentinel")
+	inner := New(ctx, "inner")
+	outer := Wrap(context.Background(), inner, "outer")
+
+	ctxHolder, ok := outer.(ContextHolder)
+	require.True(t, ok)
+	contexts := ctxHolder.Contexts()
+	require.NotEmpty(t, contexts)
+	assert.Equal(t, "sentinel", contexts[len(contexts)-1].Value(key{}))
+}
+
+func TestNew_ContextStored(t *testing.T) {
+	type key struct{}
+	ctx := context.WithValue(context.Background(), key{}, "value")
+	err := New(ctx, "msg")
+
+	ctxHolder, ok := err.(ContextHolder)
+	require.True(t, ok)
+	contexts := ctxHolder.Contexts()
+	require.Len(t, contexts, 1)
+	assert.Equal(t, "value", contexts[0].Value(key{}))
+}

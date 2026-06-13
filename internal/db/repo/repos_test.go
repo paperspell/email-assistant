@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -163,4 +164,67 @@ func TestSyncStateRepo_Upsert_Update(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, uint32(50), got.LastUID)
+}
+
+func TestEmailRepo_AccountIsolation(t *testing.T) {
+	d := openTestDB(t)
+	r := NewEmailRepo(d)
+	ctx := context.Background()
+
+	base := domain.Email{
+		MessageUID: 1,
+		Subject:    "Same UID",
+		FromEmail:  "x@y.com",
+		Date:       time.Now().UTC().Truncate(time.Second),
+		Status:     domain.StatusNew,
+		ReceivedAt: time.Now().UTC().Truncate(time.Second),
+	}
+
+	e1 := base
+	e1.ID = "id-acc1"
+	e1.AccountID = "acc1"
+	require.NoError(t, r.Upsert(ctx, e1))
+
+	e2 := base
+	e2.ID = "id-acc2"
+	e2.AccountID = "acc2"
+	e2.Subject = "Different subject"
+	require.NoError(t, r.Upsert(ctx, e2))
+
+	got1, err := r.GetByAccountAndUID(ctx, "acc1", 1)
+	require.NoError(t, err)
+	require.NotNil(t, got1)
+	assert.Equal(t, "Same UID", got1.Subject)
+
+	got2, err := r.GetByAccountAndUID(ctx, "acc2", 1)
+	require.NoError(t, err)
+	require.NotNil(t, got2)
+	assert.Equal(t, "Different subject", got2.Subject)
+}
+
+func TestEmailRepo_MultipleEmails(t *testing.T) {
+	d := openTestDB(t)
+	r := NewEmailRepo(d)
+	ctx := context.Background()
+
+	for i := range 5 {
+		e := domain.Email{
+			ID:         fmt.Sprintf("id-%d", i),
+			AccountID:  "acc1",
+			MessageUID: uint32(i + 1),
+			Subject:    fmt.Sprintf("Email %d", i),
+			FromEmail:  "x@y.com",
+			Date:       time.Now().UTC().Truncate(time.Second),
+			Status:     domain.StatusNew,
+			ReceivedAt: time.Now().UTC().Truncate(time.Second),
+		}
+		require.NoError(t, r.Upsert(ctx, e))
+	}
+
+	for i := range 5 {
+		got, err := r.GetByAccountAndUID(ctx, "acc1", uint32(i+1))
+		require.NoError(t, err)
+		require.NotNil(t, got, "expected email with uid %d", i+1)
+		assert.Equal(t, fmt.Sprintf("Email %d", i), got.Subject)
+	}
 }
