@@ -1,0 +1,47 @@
+# Email Agent configuration reference
+# Copy to config.yaml and fill in your values.
+# Sensitive values (passwords, tokens) can be overridden by environment variables.
+
+# Logging level: debug, info, warn, error
+log_level: info
+
+# Enable development mode: colorized terminal output, verbose logging
+dev_mode: false
+
+db:
+  # Path to the SQLite database file
+  path: email-agent.db
+
+account:
+  # Human-readable account name (used in logs)
+  name: My Email
+
+  # Email address for this account
+  email: user@example.com
+
+  # IMAP server hostname
+  host: imap.example.com
+
+  # IMAP server port (993 for TLS, 143 for plain)
+  port: 993
+
+  # IMAP username (usually the email address)
+  username: user@example.com
+
+  # IMAP password — prefer setting via IMAP_PASSWORD env var instead
+  password: ""
+
+  # Use TLS (recommended)
+  tls: true
+
+  # How often to poll for new emails (e.g. 1m, 30s, 5m)
+  poll_interval: 1m
+
+telegram:
+  # Telegram bot token from @BotFather
+  # Prefer setting via TELEGRAM_BOT_TOKEN env var instead
+  bot_token: ""
+
+  # Telegram chat ID to send notifications to
+  # Use a private channel or your own user chat ID
+  chat_id: 0

@@ -1,0 +1,13 @@
+quiet: false
+disable-version-string: true
+with-expecter: true
+packages:
+  github.com/paperspell/email-assistant/internal/email:
+    interfaces:
+      Provider:
+  github.com/paperspell/email-assistant/internal/telegram:
+    interfaces:
+      Notifier:
+  github.com/paperspell/email-assistant/internal/pkg/log:
+    interfaces:
+      Logger:
