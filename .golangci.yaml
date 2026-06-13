@@ -62,6 +62,7 @@ linters:
         - .WithMessage(
         - .WithMessagef(
         - .WithStack(
+        - fmt.Errorf(
       ignore-sig-regexps:
         - \.New.*Error\(
       ignore-package-globs:

@@ -5,6 +5,7 @@ import "time"
 // EmailStatus represents the lifecycle state of an email.
 type EmailStatus string
 
+// Email status constants represent the processing lifecycle of a message.
 const (
 	StatusNew      EmailStatus = "new"
 	StatusNotified EmailStatus = "notified"

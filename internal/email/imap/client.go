@@ -54,12 +54,12 @@ func (c *Client) Connect(_ context.Context) error {
 	}
 
 	if err := cl.Login(c.cfg.Username, c.cfg.Password).Wait(); err != nil {
-		_ = cl.Close()
+		cl.Close() //nolint:errcheck
 		return fmt.Errorf("imap login: %w", err)
 	}
 
 	if _, err := cl.Select("INBOX", nil).Wait(); err != nil {
-		_ = cl.Close()
+		cl.Close() //nolint:errcheck
 		return fmt.Errorf("imap select INBOX: %w", err)
 	}
 
@@ -111,7 +111,10 @@ func (c *Client) Close() error {
 	if err := c.client.Logout().Wait(); err != nil {
 		return fmt.Errorf("imap logout: %w", err)
 	}
-	return c.client.Close()
+	if err := c.client.Close(); err != nil {
+		return fmt.Errorf("imap close: %w", err)
+	}
+	return nil
 }
 
 func parseMessages(msgs []*imapclient.FetchMessageBuffer) []email.Message {
