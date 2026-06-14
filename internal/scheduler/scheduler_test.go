@@ -107,6 +107,25 @@ func TestScheduler_NoNewMessages(t *testing.T) {
 	assert.Nil(t, state, "sync state should not be created when no messages arrive")
 }
 
+func TestScheduler_FirstRun_SkipsExistingMessages(t *testing.T) {
+	messages := []email.Message{
+		{UID: 10, Subject: "Old", FromEmail: "a@b.com", Date: time.Now()},
+		{UID: 11, Subject: "Also old", FromEmail: "b@c.com", Date: time.Now()},
+	}
+	provider := &mockProvider{messages: messages}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestScheduler(t, provider, notifier)
+
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent(), "existing emails must not trigger notifications on first run")
+
+	state, err := syncRepo.Get(context.Background(), "test@example.com")
+	require.NoError(t, err)
+	require.NotNil(t, state)
+	assert.Equal(t, uint32(11), state.LastUID, "sync state must be set to the highest existing UID")
+}
+
 func TestScheduler_ProcessesNewMessages(t *testing.T) {
 	messages := []email.Message{
 		{UID: 10, Subject: "First", FromEmail: "a@b.com", Date: time.Now()},
@@ -115,6 +134,13 @@ func TestScheduler_ProcessesNewMessages(t *testing.T) {
 	provider := &mockProvider{messages: messages}
 	notifier := &mockNotifier{}
 	sched, emailRepo, syncRepo := newTestScheduler(t, provider, notifier)
+
+	// Simulate a prior run so this is not treated as first run
+	require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
+		AccountID: "test@example.com",
+		LastUID:   9,
+		SyncedAt:  time.Now(),
+	}))
 
 	runOnce(t, sched)
 
@@ -144,6 +170,13 @@ func TestScheduler_PartialFailure_ContinuesOtherMessages(t *testing.T) {
 		failOn: func(e domain.Email) bool { return e.MessageUID == 5 },
 	}
 	sched, _, syncRepo := newTestScheduler(t, provider, notifier)
+
+	// Simulate a prior run
+	require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
+		AccountID: "test@example.com",
+		LastUID:   4,
+		SyncedAt:  time.Now(),
+	}))
 
 	runOnce(t, sched)
 

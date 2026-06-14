@@ -102,6 +102,31 @@ func (s *Scheduler) poll(ctx context.Context) error {
 		return err
 	}
 
+	// First run: no sync state exists yet. Record the current highest UID as
+	// the starting point and skip processing — only emails arriving after this
+	// first poll will trigger notifications.
+	if state == nil {
+		maxUID := lastUID
+		for _, msg := range messages {
+			if msg.UID > maxUID {
+				maxUID = msg.UID
+			}
+		}
+		if maxUID > 0 {
+			s.cfg.Logger.Info("first run: skipping existing emails",
+				"account_id", s.cfg.AccountID,
+				"existing_count", len(messages),
+				"starting_from_uid", maxUID+1,
+			)
+			return s.cfg.SyncRepo.Upsert(ctx, domain.SyncState{
+				AccountID: s.cfg.AccountID,
+				LastUID:   maxUID,
+				SyncedAt:  timex.NowUTC(),
+			})
+		}
+		return nil
+	}
+
 	s.cfg.Logger.Debug("poll completed", "account_id", s.cfg.AccountID, "new_messages", len(messages))
 
 	var maxUID = lastUID
