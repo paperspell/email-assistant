@@ -8,5 +8,5 @@ import (
 
 // Notifier sends email notifications to the user.
 type Notifier interface {
-	SendNewEmail(ctx context.Context, e domain.Email) error
+	SendNewEmail(ctx context.Context, e domain.Email, c domain.Classification) (int64, error)
 }

@@ -7,21 +7,24 @@ type EmailStatus string
 
 // Email status constants represent the processing lifecycle of a message.
 const (
-	StatusNew      EmailStatus = "new"
-	StatusNotified EmailStatus = "notified"
-	StatusIgnored  EmailStatus = "ignored"
+	StatusNew         EmailStatus = "new"
+	StatusNotified    EmailStatus = "notified"
+	StatusIgnored     EmailStatus = "ignored"
+	StatusHandled     EmailStatus = "handled"
+	StatusReplyNeeded EmailStatus = "reply_needed"
 )
 
 // Email represents a received email message stored locally.
 type Email struct {
-	ID         string
-	AccountID  string
-	MessageUID uint32
-	Subject    string
-	FromEmail  string
-	FromName   string
-	Date       time.Time
-	Status     EmailStatus
-	ReceivedAt time.Time
-	Language   string
+	ID                string
+	AccountID         string
+	MessageUID        uint32
+	Subject           string
+	FromEmail         string
+	FromName          string
+	Date              time.Time
+	Status            EmailStatus
+	ReceivedAt        time.Time
+	Language          string
+	TelegramMessageID int64 // 0 until a notification is sent
 }

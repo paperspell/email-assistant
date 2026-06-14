@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `003_classifications.sql`
+Current schema reflects migrations up to: `004_telegram_feedback.sql`
 
 ```mermaid
 erDiagram
@@ -14,9 +14,10 @@ erDiagram
         TEXT from_email
         TEXT from_name
         DATETIME date
-        TEXT status "new | notified | ignored"
+        TEXT status "new | notified | ignored | handled | reply_needed"
         DATETIME received_at
         TEXT language "ISO 639-1 or empty"
+        INTEGER telegram_message_id "0 until notification sent"
     }
 
     sync_state {

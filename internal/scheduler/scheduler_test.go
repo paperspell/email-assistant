@@ -44,14 +44,14 @@ type mockNotifier struct {
 	failOn func(domain.Email) bool
 }
 
-func (m *mockNotifier) SendNewEmail(_ context.Context, e domain.Email) error {
+func (m *mockNotifier) SendNewEmail(_ context.Context, e domain.Email, _ domain.Classification) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failOn != nil && m.failOn(e) {
-		return errors.New("notify failed")
+		return 0, errors.New("notify failed")
 	}
 	m.sent = append(m.sent, e)
-	return nil
+	return int64(1000 + len(m.sent)), nil
 }
 
 func (m *mockNotifier) getSent() []domain.Email {

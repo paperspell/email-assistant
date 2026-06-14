@@ -46,11 +46,24 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 	return nil
 }
 
+// GetByID retrieves an email by its primary key.
+// Returns nil, nil if not found.
+func (r *EmailRepo) GetByID(ctx context.Context, id string) (*domain.Email, error) {
+	const q = `
+		SELECT id, account_id, message_uid, subject, from_email, from_name,
+		       date, status, received_at, language, telegram_message_id
+		FROM emails WHERE id = ?
+	`
+	row := r.db.QueryRowContext(ctx, q, id)
+	return scanEmail(row)
+}
+
 // GetByAccountAndUID retrieves an email by account ID and IMAP UID.
 // Returns nil, nil if not found.
 func (r *EmailRepo) GetByAccountAndUID(ctx context.Context, accountID string, uid uint32) (*domain.Email, error) {
 	const q = `
-		SELECT id, account_id, message_uid, subject, from_email, from_name, date, status, received_at, language
+		SELECT id, account_id, message_uid, subject, from_email, from_name,
+		       date, status, received_at, language, telegram_message_id
 		FROM emails
 		WHERE account_id = ? AND message_uid = ?
 	`
@@ -75,6 +88,23 @@ func (r *EmailRepo) UpdateStatus(ctx context.Context, id string, status domain.E
 	return nil
 }
 
+// SetTelegramMessageID stores the Telegram message ID of the notification sent for this email.
+func (r *EmailRepo) SetTelegramMessageID(ctx context.Context, emailID string, msgID int64) error {
+	const q = `UPDATE emails SET telegram_message_id = ? WHERE id = ?`
+	res, err := r.db.ExecContext(ctx, q, msgID, emailID)
+	if err != nil {
+		return fmt.Errorf("set telegram_message_id: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("set telegram_message_id: email %q not found", emailID)
+	}
+	return nil
+}
+
 func scanEmail(row *sql.Row) (*domain.Email, error) {
 	var e domain.Email
 	var dateStr, receivedAtStr, status string
@@ -83,6 +113,7 @@ func scanEmail(row *sql.Row) (*domain.Email, error) {
 		&e.ID, &e.AccountID, &e.MessageUID,
 		&e.Subject, &e.FromEmail, &e.FromName,
 		&dateStr, &status, &receivedAtStr, &e.Language,
+		&e.TelegramMessageID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

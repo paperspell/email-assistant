@@ -200,7 +200,12 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
 	}
 
-	if err := s.cfg.Notifier.SendNewEmail(ctx, e); err != nil {
+	tgMsgID, err := s.cfg.Notifier.SendNewEmail(ctx, e, classification)
+	if err != nil {
+		return err
+	}
+
+	if err := s.cfg.EmailRepo.SetTelegramMessageID(ctx, e.ID, tgMsgID); err != nil {
 		return err
 	}
 

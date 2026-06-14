@@ -129,3 +129,27 @@ func TestDomainRepo_Get_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }
+
+func TestEmailRepo_SetTelegramMessageID(t *testing.T) {
+	d := openTestDB(t)
+	r := NewEmailRepo(d)
+	ctx := context.Background()
+
+	e := domain.Email{
+		ID:         "email-tg-01",
+		AccountID:  "acc",
+		MessageUID: 99,
+		Subject:    "Test",
+		FromEmail:  "a@b.com",
+		Date:       time.Now().UTC().Truncate(time.Second),
+		Status:     domain.StatusNotified,
+		ReceivedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, r.Upsert(ctx, e))
+	require.NoError(t, r.SetTelegramMessageID(ctx, e.ID, 42001))
+
+	got, err := r.GetByID(ctx, e.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(42001), got.TelegramMessageID)
+}

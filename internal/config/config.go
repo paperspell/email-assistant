@@ -54,6 +54,7 @@ var KnownKeys = map[string]bool{
 	"account.poll_interval":       true,
 	"telegram.bot_token":          true,
 	"telegram.chat_id":            true,
+	"telegram.update_offset":      true,
 	"notification.min_importance": true,
 	"log.level":                   true,
 	"dev_mode":                    true,

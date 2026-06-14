@@ -1,0 +1,173 @@
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/PaulSonOfLars/gotgbot/v2"
+
+	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/pkg/idx"
+	"github.com/paperspell/email-assistant/internal/pkg/log"
+	"github.com/paperspell/email-assistant/internal/pkg/timex"
+)
+
+const (
+	feedbackPositiveDelta = 25
+	feedbackNegativeDelta = 25
+)
+
+// BotClient abstracts the Telegram API calls needed by the Handler.
+type BotClient interface {
+	AnswerCallback(queryID, text string) error
+	RemoveKeyboard(msgID int64) error
+	SendFollowUp(ctx context.Context, text string) error
+}
+
+// Handler processes incoming Telegram callback queries and dispatches actions.
+type Handler struct {
+	Bot                BotClient
+	EmailRepo          *repo.EmailRepo
+	SenderRepo         *repo.SenderRepo
+	ClassificationRepo *repo.ClassificationRepo
+	Logger             log.Logger
+}
+
+// Handle dispatches a single Telegram update.
+func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
+	if update.CallbackQuery == nil {
+		return nil
+	}
+	q := update.CallbackQuery
+
+	action, emailID, ok := parseCallbackData(q.Data)
+	if !ok {
+		h.Logger.Info("ignoring malformed callback data", "data", q.Data)
+		return nil
+	}
+
+	if err := h.Bot.AnswerCallback(q.Id, ""); err != nil {
+		h.Logger.Error(err, "callback_query_id", q.Id)
+	}
+
+	e, err := h.EmailRepo.GetByID(ctx, emailID)
+	if err != nil {
+		return err
+	}
+	if e == nil {
+		h.Logger.Info("callback references unknown email", "email_id", emailID)
+		return h.Bot.RemoveKeyboard(q.Message.GetMessageId())
+	}
+
+	msgID := q.Message.GetMessageId()
+
+	switch action {
+	case "handled":
+		return h.handleHandled(ctx, msgID, e)
+	case "ignore":
+		return h.handleIgnore(ctx, msgID, e)
+	case "details":
+		return h.handleDetails(ctx, e)
+	default:
+		h.Logger.Info("unknown callback action", "action", action, "email_id", emailID)
+		return nil
+	}
+}
+
+func (h *Handler) handleHandled(ctx context.Context, msgID int64, e *domain.Email) error {
+	if err := h.adjustSenderScore(ctx, e.FromEmail, feedbackPositiveDelta); err != nil {
+		return err
+	}
+	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusHandled); err != nil {
+		return err
+	}
+	h.Logger.Info("email marked handled", "email_id", e.ID, "from", e.FromEmail)
+	return h.Bot.RemoveKeyboard(msgID)
+}
+
+func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email) error {
+	if err := h.adjustSenderScore(ctx, e.FromEmail, -feedbackNegativeDelta); err != nil {
+		return err
+	}
+	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored); err != nil {
+		return err
+	}
+	h.Logger.Info("email marked ignored via feedback", "email_id", e.ID, "from", e.FromEmail)
+	return h.Bot.RemoveKeyboard(msgID)
+}
+
+func (h *Handler) handleDetails(ctx context.Context, e *domain.Email) error {
+	c, err := h.ClassificationRepo.GetByEmailID(ctx, e.ID)
+	if err != nil {
+		return err
+	}
+	text := formatDetails(e, c)
+	return h.Bot.SendFollowUp(ctx, text)
+}
+
+func (h *Handler) adjustSenderScore(ctx context.Context, emailAddr string, delta int) error {
+	sender, err := h.SenderRepo.Get(ctx, emailAddr)
+	if err != nil {
+		return fmt.Errorf("load sender: %w", err)
+	}
+
+	now := timex.NowUTC()
+	if sender == nil {
+		sender = &domain.Sender{
+			ID:        idx.GenerateID(),
+			Email:     emailAddr,
+			UpdatedAt: now,
+		}
+	}
+
+	sender.ImportanceScore = clampScore(sender.ImportanceScore+delta, 0, 100)
+	sender.UpdatedAt = now
+
+	if err := h.SenderRepo.Upsert(ctx, *sender); err != nil {
+		return fmt.Errorf("update sender score: %w", err)
+	}
+	return nil
+}
+
+func parseCallbackData(data string) (action, emailID string, ok bool) {
+	parts := strings.SplitN(data, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+func formatDetails(e *domain.Email, c *domain.Classification) string {
+	from := e.FromEmail
+	if e.FromName != "" {
+		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
+	}
+	date := e.Date.UTC().Format("02 Jan 2006 15:04 UTC")
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "ℹ Email details\n\nFrom: %s\nSubject: %s\nDate: %s\n", from, e.Subject, date)
+
+	if c != nil {
+		fmt.Fprintf(&b, "\nClassification: %s (score %d)\nCategory: %s\nReasons:\n",
+			string(c.Level), c.Score, string(c.Category))
+		for _, r := range c.Reason {
+			fmt.Fprintf(&b, "  • %s\n", r)
+		}
+	}
+	return b.String()
+}
+
+func clampScore(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// ensure Bot satisfies BotClient at compile time.
+var _ BotClient = (*Bot)(nil)

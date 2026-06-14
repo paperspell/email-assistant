@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/paperspell/email-assistant/internal/auth/keychain"
 	"github.com/paperspell/email-assistant/internal/config"
@@ -132,7 +133,28 @@ func runDaemon(ctx context.Context, path string) error {
 		Logger:             logger.With("component", "scheduler"),
 	})
 
-	return sched.Start(ctx)
+	handler := &telegram.Handler{
+		Bot:                bot,
+		EmailRepo:          emailRepo,
+		SenderRepo:         senderRepo,
+		ClassificationRepo: classificationRepo,
+		Logger:             logger.With("component", "telegram_handler"),
+	}
+
+	poller := &telegram.Poller{
+		Bot:          bot,
+		Handler:      handler,
+		SettingsRepo: settingsRepo,
+		Logger:       logger.With("component", "telegram_poller"),
+	}
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { return sched.Start(gCtx) })
+	g.Go(func() error { return poller.Run(gCtx) })
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("daemon: %w", err)
+	}
+	return nil
 }
 
 func resolveDBPath(flagValue string) string {
