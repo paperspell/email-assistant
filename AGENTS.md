@@ -49,7 +49,9 @@ docs/                Architecture, guidelines, plans
 | [docs/general-implementation-plan.md](docs/general-implementation-plan.md) | 10-stage product roadmap |
 | [docs/importance-filter.md](docs/importance-filter.md) | Classification pipeline design |
 | [docs/dependencies.md](docs/dependencies.md) | Preferred dependency versions |
-| [docs/stages/001-notification-foundation.md](docs/stages/001-notification-foundation.md) | Stage 1 detailed implementation plan |
+| [docs/db-schema.md](docs/db-schema.md) | Mermaid ERD of the current SQLite schema — **update after every new migration** |
+| [docs/stages/001-01-notification-foundation.md](docs/stages/001-01-notification-foundation.md) | Stage 1 detailed implementation plan |
+| [docs/stages/001-02-encrypted-config.md](docs/stages/001-02-encrypted-config.md) | Stage 1-02 encrypted SQLite + config in DB plan |
 
 ## Development
 
