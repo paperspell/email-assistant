@@ -267,7 +267,7 @@ Extracts domain from email address, detects language, matches keywords against s
 
 **Keyword dictionaries** (`keywords.go`)
 
-Keywords grouped by semantic meaning, covering English, Polish, Russian, Romanian, Italian:
+Keywords grouped by semantic meaning, covering English, Polish, Russian, Romanian, Italian, Belarusian, Ukrainian, Spanish, Portuguese, French, German, Kazakh, Yiddish:
 
 ```go
 var urgent = []string{
@@ -291,7 +291,8 @@ Thin wrapper around `github.com/pemistahl/lingua-go`:
 
 ```go
 func DetectLanguage(text string) string
-// Returns ISO 639-1 code: "en", "pl", "ru", "ro", "it", or "und" (undetermined)
+// Returns ISO 639-1 code or "und" (undetermined).
+// Supported: en, pl, ru, ro, it, be, uk, es, pt, fr, de, kk, yi
 ```
 
 ---
