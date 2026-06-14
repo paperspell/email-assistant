@@ -1,47 +1,39 @@
-# Email Agent configuration reference
-# Copy to config.yaml and fill in your values.
-# Sensitive values (passwords, tokens) can be overridden by environment variables.
+# Email Agent — runtime configuration
+#
+# This file is NOT read by the application.
+# Copy it as a reference for the environment variables and CLI flags
+# that control how the daemon starts.
+#
+# Application settings (IMAP account, Telegram, notification thresholds, etc.)
+# are stored in the encrypted database. See docs/settings.md.
 
-# Logging level: debug, info, warn, error
-log_level: info
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
 
-# Enable development mode: colorized terminal output, verbose logging
-dev_mode: false
+# Path to the encrypted SQLite database file.
+# Resolution order:
+#   1. --db flag:             email-agent --db /path/to/email-agent.db run
+#   2. Environment variable:  EMAIL_AGENT_DB=/path/to/email-agent.db
+#   3. Default:               ~/.email-agent/email-agent.db
+#
+# EMAIL_AGENT_DB=~/.email-agent/email-agent.db
 
-db:
-  # Path to the SQLite database file
-  path: email-agent.db
+# ---------------------------------------------------------------------------
+# Encryption key
+# ---------------------------------------------------------------------------
 
-account:
-  # Human-readable account name (used in logs)
-  name: My Email
+# Hex-encoded 32-byte AES key used to encrypt the database.
+# Generated automatically by `email-agent init` and saved to the OS keychain.
+# Set this variable on systems without a keychain (e.g. servers, CI):
+#
+# EMAIL_AGENT_KEY=<hex key printed by email-agent init>
 
-  # Email address for this account
-  email: user@example.com
+# ---------------------------------------------------------------------------
+# Log level override
+# ---------------------------------------------------------------------------
 
-  # IMAP server hostname
-  host: imap.example.com
-
-  # IMAP server port (993 for TLS, 143 for plain)
-  port: 993
-
-  # IMAP username (usually the email address)
-  username: user@example.com
-
-  # IMAP password — prefer setting via IMAP_PASSWORD env var instead
-  password: ""
-
-  # Use TLS (recommended)
-  tls: true
-
-  # How often to poll for new emails (e.g. 1m, 30s, 5m)
-  poll_interval: 1m
-
-telegram:
-  # Telegram bot token from @BotFather
-  # Prefer setting via TELEGRAM_BOT_TOKEN env var instead
-  bot_token: ""
-
-  # Telegram chat ID to send notifications to
-  # Use a private channel or your own user chat ID
-  chat_id: 0
+# Overrides the log.level setting stored in the database without modifying it.
+# Useful for temporary debug sessions.
+#
+# LOG_LEVEL=debug
