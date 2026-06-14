@@ -111,19 +111,24 @@ func runInit(ctx context.Context, path string) error {
 	}
 	chatID := promptText(sc, "  Chat ID", "")
 
+	fmt.Println()
+	fmt.Println("Notifications")
+	minImportance := promptText(sc, "  Min importance (critical/important/maybe)", "important")
+
 	settings := map[string]string{
-		"account.name":          name,
-		"account.email":         email,
-		"account.imap.host":     host,
-		"account.imap.port":     port,
-		"account.imap.username": username,
-		"account.imap.password": password,
-		"account.imap.tls":      tlsVal,
-		"account.poll_interval": pollInterval,
-		"telegram.bot_token":    botToken,
-		"telegram.chat_id":      chatID,
-		"log.level":             "info",
-		"dev_mode":              "false",
+		"account.name":                name,
+		"account.email":               email,
+		"account.imap.host":           host,
+		"account.imap.port":           port,
+		"account.imap.username":       username,
+		"account.imap.password":       password,
+		"account.imap.tls":            tlsVal,
+		"account.poll_interval":       pollInterval,
+		"telegram.bot_token":          botToken,
+		"telegram.chat_id":            chatID,
+		"notification.min_importance": minImportance,
+		"log.level":                   "info",
+		"dev_mode":                    "false",
 	}
 
 	settingsRepo := repo.NewSettingsRepo(sqlDB)

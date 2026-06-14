@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -210,6 +211,7 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		"level", string(classification.Level),
 		"score", classification.Score,
 		"category", string(classification.Category),
+		"reason", strings.Join(classification.Reason, "; "),
 	)
 
 	return nil
@@ -222,7 +224,7 @@ func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
 		domain.LevelImportant: 2,
 		domain.LevelCritical:  3,
 	}
-	min := order[s.cfg.MinImportance]
+	threshold := order[s.cfg.MinImportance]
 	got := order[level]
-	return got >= min
+	return got >= threshold
 }

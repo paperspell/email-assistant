@@ -214,12 +214,10 @@ type Message struct {
     InReplyTo       string // set → active conversation
     ListUnsubscribe string // set → likely newsletter
     Precedence      string // "bulk" or "list" → newsletter
-    ToAddresses     []string
-    CcAddresses     []string
 }
 ```
 
-Update `FetchSince` to request `BODY[HEADER.FIELDS (IN-REPLY-TO LIST-UNSUBSCRIBE PRECEDENCE TO CC)]` alongside `ENVELOPE`.
+Update `FetchSince` to request `BODY[HEADER.FIELDS (IN-REPLY-TO LIST-UNSUBSCRIBE PRECEDENCE)]` alongside `ENVELOPE`.
 
 ---
 

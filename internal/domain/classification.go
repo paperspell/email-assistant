@@ -16,6 +16,7 @@ const (
 // Category groups an email by its primary topic.
 type Category string
 
+// Category values for email topic classification.
 const (
 	CategoryWork       Category = "work"
 	CategoryFinance    Category = "finance"
@@ -52,8 +53,8 @@ type Sender struct {
 	UpdatedAt       time.Time
 }
 
-// DomainRecord tracks per-domain statistics used by the importance filter.
-type DomainRecord struct {
+// Record tracks per-domain statistics used by the importance filter.
+type Record struct {
 	ID              string
 	Domain          string
 	ImportanceScore int

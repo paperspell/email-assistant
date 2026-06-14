@@ -9,6 +9,7 @@ require (
 	github.com/lmittmann/tint v1.1.3
 	github.com/ncruces/go-sqlite3 v0.35.0
 	github.com/oklog/ulid/v2 v2.1.1
+	github.com/pemistahl/lingua-go v1.4.0
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -27,7 +28,6 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v3 v3.1.35302 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
-	github.com/pemistahl/lingua-go v1.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect

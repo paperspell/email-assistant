@@ -9,10 +9,11 @@ import (
 	"net"
 	"net/textproto"
 
-	imaplib "github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/paperspell/email-assistant/internal/email"
+
+	imaplib "github.com/emersion/go-imap/v2"
 )
 
 // extraHeaders lists the additional header fields fetched alongside ENVELOPE.
@@ -160,6 +161,11 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer) []email.Message {
 
 func parseHeaderBytes(data []byte) textproto.MIMEHeader {
 	r := textproto.NewReader(bufio.NewReader(bytes.NewReader(data)))
-	h, _ := r.ReadMIMEHeader()
+	// ReadMIMEHeader returns io.EOF when headers end without a blank line,
+	// which is normal for IMAP HEADER.FIELDS fetches. Use partial results.
+	h, err := r.ReadMIMEHeader()
+	if err != nil && len(h) == 0 {
+		return textproto.MIMEHeader{}
+	}
 	return h
 }

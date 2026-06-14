@@ -15,11 +15,12 @@ import (
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
-	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/scheduler"
 	"github.com/paperspell/email-assistant/internal/telegram"
+
+	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
 )
 
 var version = "dev"

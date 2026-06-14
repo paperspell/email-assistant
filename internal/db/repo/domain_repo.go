@@ -22,14 +22,14 @@ func NewDomainRepo(db *sql.DB) *DomainRepo {
 
 // Get retrieves the domain record for domainName.
 // Returns nil, nil if not found.
-func (r *DomainRepo) Get(ctx context.Context, domainName string) (*domain.DomainRecord, error) {
+func (r *DomainRepo) Get(ctx context.Context, domainName string) (*domain.Record, error) {
 	const q = `
 		SELECT id, domain, importance_score, updated_at
 		FROM domains WHERE domain = ?
 	`
 	row := r.db.QueryRowContext(ctx, q, domainName)
 
-	var d domain.DomainRecord
+	var d domain.Record
 	var updatedAtStr string
 	err := row.Scan(&d.ID, &d.Domain, &d.ImportanceScore, &updatedAtStr)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -46,7 +46,7 @@ func (r *DomainRepo) Get(ctx context.Context, domainName string) (*domain.Domain
 }
 
 // Upsert inserts or updates a domain record.
-func (r *DomainRepo) Upsert(ctx context.Context, d domain.DomainRecord) error {
+func (r *DomainRepo) Upsert(ctx context.Context, d domain.Record) error {
 	const q = `
 		INSERT INTO domains (id, domain, importance_score, updated_at)
 		VALUES (?, ?, ?, ?)

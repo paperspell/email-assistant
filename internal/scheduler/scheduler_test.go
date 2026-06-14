@@ -65,6 +65,12 @@ func (m *mockNotifier) getSent() []domain.Email {
 func newTestScheduler(
 	t *testing.T, provider email.Provider, notifier *mockNotifier,
 ) (*Scheduler, *repo.EmailRepo, *repo.SyncStateRepo) {
+	return newTestSchedulerWithLevel(t, provider, notifier, domain.LevelIgnore)
+}
+
+func newTestSchedulerWithLevel(
+	t *testing.T, provider email.Provider, notifier *mockNotifier, minImportance domain.ImportanceLevel,
+) (*Scheduler, *repo.EmailRepo, *repo.SyncStateRepo) {
 	t.Helper()
 	sqlDB, err := db.Open(":memory:", "")
 	require.NoError(t, err)
@@ -81,7 +87,7 @@ func newTestScheduler(
 	sched := New(Config{
 		AccountID:          "test@example.com",
 		PollInterval:       time.Hour,
-		MinImportance:      domain.LevelIgnore, // notify everything in tests
+		MinImportance:      minImportance,
 		EmailRepo:          emailRepo,
 		SyncRepo:           syncRepo,
 		ClassificationRepo: classRepo,
@@ -231,4 +237,103 @@ func TestScheduler_FetchError_DoesNotCrash(t *testing.T) {
 	// The key property: no panic, no notification.
 	_ = sched.poll(ctx)
 	assert.Empty(t, notifier.getSent())
+}
+
+// --- importance filtering tests ---
+// Score arithmetic for unknown senders (seen_count=0 → -10 from baseline 40):
+//   newsletter (List-Unsubscribe): 40 - 40 - 10 = -10 → clamped 0 → Ignore
+//   urgent keyword only:           40 + 25 - 10 = 55              → Maybe
+//   urgent + meeting keywords:     40 + 25 + 20 - 10 = 75         → Important
+
+func priorRun(t *testing.T, syncRepo *repo.SyncStateRepo, lastUID uint32) {
+	t.Helper()
+	require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
+		AccountID: "test@example.com",
+		LastUID:   lastUID,
+		SyncedAt:  time.Now(),
+	}))
+}
+
+func TestScheduler_Newsletter_IsIgnored(t *testing.T) {
+	msg := email.Message{
+		UID:             10,
+		Subject:         "Big sale this week!",
+		FromEmail:       "news@shop.com",
+		Date:            time.Now(),
+		ListUnsubscribe: "<mailto:unsub@shop.com>",
+	}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, emailRepo, syncRepo := newTestSchedulerWithLevel(t, provider, notifier, domain.LevelImportant)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent())
+	e, err := emailRepo.GetByAccountAndUID(context.Background(), "test@example.com", 10)
+	require.NoError(t, err)
+	require.NotNil(t, e)
+	assert.Equal(t, domain.StatusIgnored, e.Status)
+}
+
+func TestScheduler_ImportantEmail_IsNotified(t *testing.T) {
+	// "urgent" (+25) + "meeting" (+20) - unknown sender (-10) + baseline (40) = 75 → Important
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent meeting scheduled",
+		FromEmail: "boss@work.com",
+		Date:      time.Now(),
+	}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, emailRepo, syncRepo := newTestSchedulerWithLevel(t, provider, notifier, domain.LevelImportant)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	sent := notifier.getSent()
+	require.Len(t, sent, 1)
+	assert.Equal(t, uint32(10), sent[0].MessageUID)
+	e, err := emailRepo.GetByAccountAndUID(context.Background(), "test@example.com", 10)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusNotified, e.Status)
+}
+
+func TestScheduler_MaybeEmail_IgnoredByDefault(t *testing.T) {
+	// "urgent" (+25) - unknown sender (-10) + baseline (40) = 55 → Maybe; default threshold is Important
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent update",
+		FromEmail: "someone@x.com",
+		Date:      time.Now(),
+	}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, emailRepo, syncRepo := newTestSchedulerWithLevel(t, provider, notifier, domain.LevelImportant)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent())
+	e, err := emailRepo.GetByAccountAndUID(context.Background(), "test@example.com", 10)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusIgnored, e.Status)
+}
+
+func TestScheduler_MaybeEmail_NotifiedWhenThresholdLowered(t *testing.T) {
+	// same 55-point email, but min_importance=maybe → should notify
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent update",
+		FromEmail: "someone@x.com",
+		Date:      time.Now(),
+	}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestSchedulerWithLevel(t, provider, notifier, domain.LevelMaybe)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Len(t, notifier.getSent(), 1)
 }

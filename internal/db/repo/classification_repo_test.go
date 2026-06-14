@@ -108,7 +108,7 @@ func TestDomainRepo_Upsert_And_Get(t *testing.T) {
 	r := NewDomainRepo(d)
 	ctx := context.Background()
 
-	rec := domain.DomainRecord{
+	rec := domain.Record{
 		ID:              "d-01",
 		Domain:          "school.pl",
 		ImportanceScore: 30,
