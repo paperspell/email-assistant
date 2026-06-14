@@ -52,6 +52,7 @@ docs/                Architecture, guidelines, plans
 | [docs/db-schema.md](docs/db-schema.md) | Mermaid ERD of the current SQLite schema — **update after every new migration** |
 | [docs/stages/001-01-notification-foundation.md](docs/stages/001-01-notification-foundation.md) | Stage 1 detailed implementation plan |
 | [docs/stages/001-02-encrypted-config.md](docs/stages/001-02-encrypted-config.md) | Stage 1-02 encrypted SQLite + config in DB plan |
+| [docs/stages/002-01-importance-detection.md](docs/stages/002-01-importance-detection.md) | Stage 2-01 importance filter implementation plan |
 
 ## Development
 
