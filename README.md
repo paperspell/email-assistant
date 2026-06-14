@@ -28,30 +28,42 @@ make build
 
 The binary is written to `bin/email-agent`.
 
-## Configuration
+## Setup
+
+Run the interactive setup wizard once to create and configure the encrypted database:
 
 ```bash
-cp config.example.yaml config.yaml
+email-agent init
 ```
 
-Edit `config.yaml` with your IMAP server and Telegram settings. Sensitive values can be passed via environment variables instead of the config file:
+The wizard will ask for your IMAP account and Telegram credentials. All settings are stored in an Adiantum-encrypted SQLite database at `~/.email-agent/email-agent.db`. The encryption key is saved to your OS keychain automatically.
 
-| Environment variable | Description |
-|----------------------|-------------|
-| `IMAP_PASSWORD` | IMAP account password |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token |
-| `LOG_LEVEL` | Log level: debug, info, warn, error |
-| `DB_PATH` | Path to SQLite database file |
+On headless Linux servers where no keychain is available, the wizard will print the key for you to set as the `EMAIL_AGENT_KEY` environment variable.
 
 ## Usage
 
 ```bash
 # Start the daemon
-email-agent run --config config.yaml
+email-agent run
+
+# Update a setting
+email-agent config set account.poll_interval 2m
+email-agent config set log.level debug
+
+# Override database path
+email-agent --db /custom/path/db.sqlite run
 
 # Print version
 email-agent version
 ```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `EMAIL_AGENT_DB` | Database path override |
+| `EMAIL_AGENT_KEY` | Encryption key (headless Linux fallback) |
+| `LOG_LEVEL` | Log level override: debug, info, warn, error |
 
 ## Development
 

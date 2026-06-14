@@ -1,4 +1,4 @@
-# 001 — Notification Foundation — Local Verification
+# 001-01 — Notification Foundation — Local Verification
 
 ## 1. Run automated checks
 
@@ -13,19 +13,18 @@ make build
 ./bin/email-agent version
 ```
 
-## 3. Configure
+## 3. Initialize
 
 ```bash
-cp config.example.yaml config.yaml
-# fill in account and telegram sections
-export IMAP_PASSWORD=...
-export TELEGRAM_BOT_TOKEN=...
+./bin/email-agent init
 ```
+
+Follow the wizard. Enter your IMAP credentials and Telegram bot token and chat ID.
 
 ## 4. Run the daemon
 
 ```bash
-./bin/email-agent run --config config.yaml
+./bin/email-agent run
 ```
 
 ## 5. Trigger a notification

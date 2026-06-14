@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `001_initial.sql`
+Current schema reflects migrations up to: `002_settings.sql`
 
 ```mermaid
 erDiagram
@@ -22,6 +22,12 @@ erDiagram
         TEXT account_id PK "email address"
         INTEGER last_uid "last processed IMAP UID"
         DATETIME synced_at
+    }
+
+    settings {
+        TEXT key PK "dot-notation key e.g. account.imap.host"
+        TEXT value
+        DATETIME updated_at
     }
 
     goose_db_version {

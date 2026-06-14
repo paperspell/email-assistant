@@ -16,7 +16,7 @@ import (
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	sqlDB, err := db.Open(":memory:")
+	sqlDB, err := db.Open(":memory:", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, db.Migrate(context.Background(), sqlDB))

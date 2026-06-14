@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
+	"github.com/paperspell/email-assistant/internal/auth/keychain"
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
@@ -22,6 +24,8 @@ import (
 var version = "dev"
 
 func main() {
+	var dbPath string
+
 	root := &cobra.Command{
 		Use:   "email-agent",
 		Short: "Local-first email monitoring daemon",
@@ -29,16 +33,15 @@ func main() {
 			DisableDefaultCmd: true,
 		},
 	}
+	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to database file (default: ~/.email-agent/email-agent.db)")
 
-	var configPath string
 	runCmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start the email monitoring daemon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDaemon(cmd.Context(), configPath)
+			return runDaemon(cmd.Context(), resolveDBPath(dbPath))
 		},
 	}
-	runCmd.Flags().StringVarP(&configPath, "config", "c", "config.yaml", "path to config file")
 
 	versionCmd := &cobra.Command{
 		Use:   "version",
@@ -48,7 +51,7 @@ func main() {
 		},
 	}
 
-	root.AddCommand(runCmd, versionCmd)
+	root.AddCommand(runCmd, versionCmd, newInitCmd(&dbPath), newConfigCmd(&dbPath))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 
@@ -59,33 +62,39 @@ func main() {
 	}
 }
 
-func runDaemon(ctx context.Context, configPath string) error {
-	cfg, err := config.Load(configPath)
+func runDaemon(ctx context.Context, path string) error {
+	hexKey, err := keychain.Load()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return err
 	}
 
-	logger := log.NewLogger(log.LoggerConfig{
-		Dev:   cfg.DevMode,
-		Level: cfg.LogLevel,
-	})
-
-	ctx = log.IntoContext(ctx, logger)
-	logger.Info("email-agent starting", "version", version)
-
-	sqlDB, err := db.Open(cfg.DB.Path)
+	sqlDB, err := db.Open(path, hexKey)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer func() {
 		if err := sqlDB.Close(); err != nil {
-			logger.Error(err)
+			log.FromContext(ctx).Error(err)
 		}
 	}()
 
 	if err := db.Migrate(ctx, sqlDB); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
+
+	settingsRepo := repo.NewSettingsRepo(sqlDB)
+
+	cfg, err := config.Load(ctx, settingsRepo)
+	if err != nil {
+		return err
+	}
+
+	logger := log.NewLogger(log.LoggerConfig{
+		Dev:   cfg.DevMode,
+		Level: cfg.LogLevel,
+	})
+	ctx = log.IntoContext(ctx, logger)
+	logger.Info("email-agent starting", "version", version)
 
 	emailRepo := repo.NewEmailRepo(sqlDB)
 	syncRepo := repo.NewSyncStateRepo(sqlDB)
@@ -103,9 +112,8 @@ func runDaemon(ctx context.Context, configPath string) error {
 		return fmt.Errorf("create telegram bot: %w", err)
 	}
 
-	accountID := cfg.Account.Email
 	sched := scheduler.New(scheduler.Config{
-		AccountID:    accountID,
+		AccountID:    cfg.Account.Email,
 		PollInterval: cfg.Account.PollInterval,
 		EmailRepo:    emailRepo,
 		SyncRepo:     syncRepo,
@@ -115,4 +123,18 @@ func runDaemon(ctx context.Context, configPath string) error {
 	})
 
 	return sched.Start(ctx)
+}
+
+func resolveDBPath(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if v := os.Getenv("EMAIL_AGENT_DB"); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "email-agent.db"
+	}
+	return filepath.Join(home, ".email-agent", "email-agent.db")
 }

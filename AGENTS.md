@@ -30,7 +30,7 @@ internal/
     flow/            Must() panic helper
     ioutil/          Safe io.Closer wrapper
   domain/            Shared domain models (transport-agnostic)
-  config/            YAML config loading and validation
+  config/            Config loading from settings table
   db/                SQLite open, migrations, repositories
   email/             EmailProvider interface and IMAP implementation
   telegram/          Telegram send-only notifier
@@ -67,9 +67,12 @@ make check       # lint + test + test-migrations
 ## Running Locally
 
 ```bash
-cp config.example.yaml config.yaml
-# edit config.yaml with your IMAP and Telegram settings
-export IMAP_PASSWORD=yourpassword
-export TELEGRAM_BOT_TOKEN=yourtoken
-make run
+# One-time setup — creates encrypted database at ~/.email-agent/email-agent.db
+email-agent init
+
+# Start the daemon
+email-agent run
+
+# Update a setting after init
+email-agent config set account.poll_interval 2m
 ```

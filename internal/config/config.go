@@ -1,57 +1,70 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/paperspell/email-assistant/internal/db/repo"
 )
 
-// Config holds all application configuration.
+// Config holds all application settings loaded from the database.
 type Config struct {
-	LogLevel string         `yaml:"log_level"`
-	DevMode  bool           `yaml:"dev_mode"`
-	DB       DBConfig       `yaml:"db"`
-	Account  IMAPAccount    `yaml:"account"`
-	Telegram TelegramConfig `yaml:"telegram"`
-}
-
-// DBConfig holds database configuration.
-type DBConfig struct {
-	Path string `yaml:"path"`
+	LogLevel string
+	DevMode  bool
+	Account  IMAPAccount
+	Telegram TelegramConfig
 }
 
 // IMAPAccount holds configuration for one IMAP account.
 type IMAPAccount struct {
-	Name         string        `yaml:"name"`
-	Email        string        `yaml:"email"`
-	Host         string        `yaml:"host"`
-	Port         int           `yaml:"port"`
-	Username     string        `yaml:"username"`
-	Password     string        `yaml:"password"`
-	TLS          bool          `yaml:"tls"`
-	PollInterval time.Duration `yaml:"poll_interval"`
+	Name         string
+	Email        string
+	Host         string
+	Port         int
+	Username     string
+	Password     string
+	TLS          bool
+	PollInterval time.Duration
 }
 
 // TelegramConfig holds Telegram bot configuration.
 type TelegramConfig struct {
-	BotToken string `yaml:"bot_token"`
-	ChatID   int64  `yaml:"chat_id"`
+	BotToken string
+	ChatID   int64
 }
 
-// Load reads the config file at path and applies environment variable overrides.
-func Load(path string) (*Config, error) {
-	cfg := defaults()
+// KnownKeys is the set of all valid settings keys.
+var KnownKeys = map[string]bool{
+	"account.name":          true,
+	"account.email":         true,
+	"account.imap.host":     true,
+	"account.imap.port":     true,
+	"account.imap.username": true,
+	"account.imap.password": true,
+	"account.imap.tls":      true,
+	"account.poll_interval": true,
+	"telegram.bot_token":    true,
+	"telegram.chat_id":      true,
+	"log.level":             true,
+	"dev_mode":              true,
+}
 
-	data, err := os.ReadFile(path)
+// Load reads all settings from the database and returns a validated Config.
+func Load(ctx context.Context, r *repo.SettingsRepo) (*Config, error) {
+	all, err := r.GetAll(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read config file %q: %w", path, err)
-	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+		return nil, fmt.Errorf("load settings: %w", err)
 	}
 
+	if len(all) == 0 {
+		return nil, fmt.Errorf("database not initialized — run 'email-agent init' first")
+	}
+
+	cfg := defaults()
+	applySettings(cfg, all)
 	applyEnvOverrides(cfg)
 
 	if err := cfg.validate(); err != nil {
@@ -64,9 +77,6 @@ func Load(path string) (*Config, error) {
 func defaults() *Config {
 	return &Config{
 		LogLevel: "info",
-		DB: DBConfig{
-			Path: "email-agent.db",
-		},
 		Account: IMAPAccount{
 			Port:         993,
 			TLS:          true,
@@ -75,39 +85,75 @@ func defaults() *Config {
 	}
 }
 
+func applySettings(cfg *Config, s map[string]string) {
+	if v := s["log.level"]; v != "" {
+		cfg.LogLevel = v
+	}
+	if v := s["dev_mode"]; v != "" {
+		cfg.DevMode = v == "true"
+	}
+	if v := s["account.name"]; v != "" {
+		cfg.Account.Name = v
+	}
+	if v := s["account.email"]; v != "" {
+		cfg.Account.Email = v
+	}
+	if v := s["account.imap.host"]; v != "" {
+		cfg.Account.Host = v
+	}
+	if v := s["account.imap.port"]; v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			cfg.Account.Port = p
+		}
+	}
+	if v := s["account.imap.username"]; v != "" {
+		cfg.Account.Username = v
+	}
+	if v := s["account.imap.password"]; v != "" {
+		cfg.Account.Password = v
+	}
+	if v := s["account.imap.tls"]; v != "" {
+		cfg.Account.TLS = v == "true"
+	}
+	if v := s["account.poll_interval"]; v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Account.PollInterval = d
+		}
+	}
+	if v := s["telegram.bot_token"]; v != "" {
+		cfg.Telegram.BotToken = v
+	}
+	if v := s["telegram.chat_id"]; v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.Telegram.ChatID = id
+		}
+	}
+}
+
 func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
-	}
-	if v := os.Getenv("DB_PATH"); v != "" {
-		cfg.DB.Path = v
-	}
-	if v := os.Getenv("IMAP_PASSWORD"); v != "" {
-		cfg.Account.Password = v
-	}
-	if v := os.Getenv("TELEGRAM_BOT_TOKEN"); v != "" {
-		cfg.Telegram.BotToken = v
 	}
 }
 
 func (c *Config) validate() error {
 	if c.Account.Host == "" {
-		return fmt.Errorf("config: account.host is required")
+		return fmt.Errorf("config: account.imap.host is required")
 	}
 	if c.Account.Username == "" {
-		return fmt.Errorf("config: account.username is required")
+		return fmt.Errorf("config: account.imap.username is required")
 	}
 	if c.Account.Password == "" {
-		return fmt.Errorf("config: account.password is required (or set IMAP_PASSWORD env var)")
+		return fmt.Errorf("config: account.imap.password is required")
 	}
 	if c.Account.Port == 0 {
-		return fmt.Errorf("config: account.port is required")
+		return fmt.Errorf("config: account.imap.port is required")
 	}
 	if c.Account.PollInterval <= 0 {
 		return fmt.Errorf("config: account.poll_interval must be positive")
 	}
 	if c.Telegram.BotToken == "" {
-		return fmt.Errorf("config: telegram.bot_token is required (or set TELEGRAM_BOT_TOKEN env var)")
+		return fmt.Errorf("config: telegram.bot_token is required")
 	}
 	if c.Telegram.ChatID == 0 {
 		return fmt.Errorf("config: telegram.chat_id is required")

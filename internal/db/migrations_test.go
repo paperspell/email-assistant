@@ -12,7 +12,7 @@ import (
 )
 
 func TestMigrations_Up(t *testing.T) {
-	sqlDB, err := Open(":memory:")
+	sqlDB, err := Open(":memory:", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
@@ -24,7 +24,7 @@ func TestMigrations_Up(t *testing.T) {
 }
 
 func TestMigrations_Idempotent(t *testing.T) {
-	sqlDB, err := Open(":memory:")
+	sqlDB, err := Open(":memory:", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 

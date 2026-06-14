@@ -23,10 +23,12 @@ go 1.26+
 
 ## Configuration
 
+Configuration is stored in the encrypted SQLite database. No config file or env-parsing library is needed.
+
 | Purpose | Import Path | Version |
 |---------|-------------|---------|
-| Config from environment variables | `github.com/caarlos0/env/v10` | v10.0.0 |
-| YAML config file parsing | `gopkg.in/yaml.v3` | v3.0.1 |
+| OS keychain (encryption key storage) | `github.com/zalando/go-keyring` | v0.2.8 |
+| Terminal password input | `golang.org/x/term` | v0.44.0 |
 
 ---
 
@@ -54,10 +56,11 @@ Use Go standard library `log/slog` as the logger interface.
 
 | Purpose | Import Path | Version |
 |---------|-------------|---------|
-| SQLite driver (pure Go) | `modernc.org/sqlite` | v1.52.0 |
+| SQLite driver (pure Go, WASM-based) | `github.com/ncruces/go-sqlite3` | v0.35.0 |
+| Adiantum full-database encryption VFS | `github.com/ncruces/go-sqlite3/vfs/adiantum` | v0.35.0 |
 | Database migrations | `github.com/pressly/goose/v3` | v3.27.1 |
 
-> **Note:** `modernc.org/sqlite` supports FTS5 (compiled in). It does NOT support loadable C extensions such as `sqlite-vec` or `sqlite-vss`. If vector search in SQLite becomes a requirement, switch to `github.com/mattn/go-sqlite3` (CGO) which can load external extensions.
+> **Note:** `ncruces/go-sqlite3` supports FTS5. It does NOT support loadable C extensions such as `sqlite-vec`. No CGO required.
 
 ---
 

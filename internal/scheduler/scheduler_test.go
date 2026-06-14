@@ -65,7 +65,7 @@ func newTestScheduler(
 	t *testing.T, provider email.Provider, notifier *mockNotifier,
 ) (*Scheduler, *repo.EmailRepo, *repo.SyncStateRepo) {
 	t.Helper()
-	sqlDB, err := db.Open(":memory:")
+	sqlDB, err := db.Open(":memory:", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, db.Migrate(context.Background(), sqlDB))
