@@ -187,11 +187,15 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 	}
 
 	if !s.shouldNotify(classification.Level) {
-		s.cfg.Logger.Debug("email ignored",
+		s.cfg.Logger.Info("email ignored",
 			"account_id", s.cfg.AccountID,
 			"uid", msg.UID,
+			"from", msg.FromEmail,
+			"subject", msg.Subject,
 			"level", string(classification.Level),
 			"score", classification.Score,
+			"category", string(classification.Category),
+			"reason", strings.Join(classification.Reason, "; "),
 		)
 		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
 	}
@@ -207,6 +211,7 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 	s.cfg.Logger.Info("notified",
 		"account_id", s.cfg.AccountID,
 		"uid", msg.UID,
+		"from", msg.FromEmail,
 		"subject", msg.Subject,
 		"level", string(classification.Level),
 		"score", classification.Score,

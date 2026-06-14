@@ -1,80 +1,83 @@
 package importance
 
 import (
+	"fmt"
+
 	"github.com/paperspell/email-assistant/internal/features"
 )
 
 const baseline = 40
 
 // Score computes an importance score [0, 100] and a list of human-readable
-// reasons explaining the result.
+// reasons explaining the result. Each reason includes its delta so the
+// arithmetic is self-evident: sum all deltas + baseline = final score.
 func Score(f features.EmailFeatures) (int, []string) {
 	score := baseline
-	var reasons []string
+	reasons := []string{fmt.Sprintf("baseline: +%d", baseline)}
 
 	// --- Negative signals (newsletters / bulk) ---
 	if f.HasListUnsubscribe {
 		score -= 40
-		reasons = append(reasons, "newsletter (List-Unsubscribe header)")
+		reasons = append(reasons, "newsletter (List-Unsubscribe header): -40")
 	}
 	if f.IsBulkPrecedence {
 		score -= 30
-		reasons = append(reasons, "bulk or list precedence")
+		reasons = append(reasons, "bulk or list precedence: -30")
 	}
 
 	// --- Sender / domain history ---
 	if f.SenderSeenCount == 0 {
 		score -= 10
-		reasons = append(reasons, "unknown sender")
+		reasons = append(reasons, "unknown sender: -10")
 	} else if f.SenderScore > 0 {
 		bonus := f.SenderScore / 5
 		score += bonus
-		reasons = append(reasons, "sender previously important")
+		reasons = append(reasons, fmt.Sprintf("sender previously important: +%d", bonus))
 	}
 	if f.DomainScore > 0 {
 		bonus := f.DomainScore / 5
 		score += bonus
-		reasons = append(reasons, "domain previously important")
+		reasons = append(reasons, fmt.Sprintf("domain previously important: +%d", bonus))
 	}
 
 	// --- Thread signal ---
 	if f.IsReply {
 		score += 20
-		reasons = append(reasons, "active conversation (In-Reply-To)")
+		reasons = append(reasons, "active conversation (In-Reply-To): +20")
 	}
 
 	// --- Keyword signals ---
 	if f.HasGovernmentKeyword {
 		score += 30
-		reasons = append(reasons, "government sender or keyword")
+		reasons = append(reasons, "government sender or keyword: +30")
 	}
 	if f.HasSecurityKeyword {
 		score += 25
-		reasons = append(reasons, "security keyword in subject")
+		reasons = append(reasons, "security keyword in subject: +25")
 	}
 	if f.HasUrgentKeyword {
 		score += 25
-		reasons = append(reasons, "urgent keyword in subject")
+		reasons = append(reasons, "urgent keyword in subject: +25")
 	}
 	if f.HasInvoiceKeyword {
 		score += 20
-		reasons = append(reasons, "invoice or payment keyword")
+		reasons = append(reasons, "invoice or payment keyword: +20")
 	}
 	if f.HasMeetingKeyword {
 		score += 20
-		reasons = append(reasons, "meeting keyword in subject")
+		reasons = append(reasons, "meeting keyword in subject: +20")
 	}
 	if f.HasDeadlineKeyword {
 		score += 20
-		reasons = append(reasons, "deadline keyword in subject")
+		reasons = append(reasons, "deadline keyword in subject: +20")
 	}
 	if f.HasInterviewKeyword {
 		score += 20
-		reasons = append(reasons, "interview or job offer keyword")
+		reasons = append(reasons, "interview or job offer keyword: +20")
 	}
 	if f.HasSchoolKeyword {
 		score += 20
-		reasons = append(reasons, "school keyword or education domain")
+		reasons = append(reasons, "school keyword or education domain: +20")
 	}
 
 	// Clamp to [0, 100]
