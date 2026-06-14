@@ -1,17 +1,27 @@
 package imap
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/textproto"
 
+	imaplib "github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/paperspell/email-assistant/internal/email"
-
-	imaplib "github.com/emersion/go-imap/v2"
 )
+
+// extraHeaders lists the additional header fields fetched alongside ENVELOPE.
+var extraHeaders = []string{"In-Reply-To", "List-Unsubscribe", "Precedence"}
+
+var extraHeaderSection = &imaplib.FetchItemBodySection{
+	Specifier:    imaplib.PartSpecifierHeader,
+	HeaderFields: extraHeaders,
+}
 
 // Config holds connection parameters for an IMAP server.
 type Config struct {
@@ -73,12 +83,10 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 		return nil, fmt.Errorf("imap: not connected")
 	}
 
-	// UID 0 is invalid in IMAP; start from 1 for the initial poll.
 	startUID := imaplib.UID(lastUID + 1)
-
 	criteria := &imaplib.SearchCriteria{
 		UID: []imaplib.UIDSet{
-			{{Start: startUID, Stop: 0}}, // Stop:0 means * (last message)
+			{{Start: startUID, Stop: 0}},
 		},
 	}
 
@@ -93,7 +101,11 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 	}
 
 	uidSet := imaplib.UIDSetNum(uids...)
-	fetchOptions := &imaplib.FetchOptions{Envelope: true, UID: true}
+	fetchOptions := &imaplib.FetchOptions{
+		Envelope:    true,
+		UID:         true,
+		BodySection: []*imaplib.FetchItemBodySection{extraHeaderSection},
+	}
 
 	msgs, err := c.client.Fetch(uidSet, fetchOptions).Collect()
 	if err != nil {
@@ -133,7 +145,21 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer) []email.Message {
 			msg.FromEmail = from.Addr()
 			msg.FromName = from.Name
 		}
+
+		if headerBytes := m.FindBodySection(extraHeaderSection); len(headerBytes) > 0 {
+			h := parseHeaderBytes(headerBytes)
+			msg.InReplyTo = h.Get("In-Reply-To")
+			msg.ListUnsubscribe = h.Get("List-Unsubscribe")
+			msg.Precedence = h.Get("Precedence")
+		}
+
 		out = append(out, msg)
 	}
 	return out
+}
+
+func parseHeaderBytes(data []byte) textproto.MIMEHeader {
+	r := textproto.NewReader(bufio.NewReader(bytes.NewReader(data)))
+	h, _ := r.ReadMIMEHeader()
+	return h
 }

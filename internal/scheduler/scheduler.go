@@ -9,6 +9,8 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
+	"github.com/paperspell/email-assistant/internal/features"
+	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/pkg/timex"
@@ -17,13 +19,16 @@ import (
 
 // Config holds all dependencies for the Scheduler.
 type Config struct {
-	AccountID    string
-	PollInterval time.Duration
-	EmailRepo    *repo.EmailRepo
-	SyncRepo     *repo.SyncStateRepo
-	Provider     email.Provider
-	Notifier     telegram.Notifier
-	Logger       log.Logger
+	AccountID          string
+	PollInterval       time.Duration
+	MinImportance      domain.ImportanceLevel
+	EmailRepo          *repo.EmailRepo
+	SyncRepo           *repo.SyncStateRepo
+	ClassificationRepo *repo.ClassificationRepo
+	Filter             *importance.Filter
+	Provider           email.Provider
+	Notifier           telegram.Notifier
+	Logger             log.Logger
 }
 
 // Scheduler polls an IMAP account and sends Telegram notifications for new emails.
@@ -51,7 +56,6 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	ticker := time.NewTicker(s.cfg.PollInterval)
 	defer ticker.Stop()
 
-	// Run an immediate poll on startup before waiting for the first tick.
 	s.pollWithBackoff(ctx)
 
 	for {
@@ -102,9 +106,8 @@ func (s *Scheduler) poll(ctx context.Context) error {
 		return err
 	}
 
-	// First run: no sync state exists yet. Record the current highest UID as
-	// the starting point and skip processing — only emails arriving after this
-	// first poll will trigger notifications.
+	// First run: no sync state exists yet. Record the current highest UID and
+	// skip processing — only emails arriving after this first poll will notify.
 	if state == nil {
 		maxUID := lastUID
 		for _, msg := range messages {
@@ -141,12 +144,11 @@ func (s *Scheduler) poll(ctx context.Context) error {
 	}
 
 	if maxUID > lastUID {
-		newState := domain.SyncState{
+		if err := s.cfg.SyncRepo.Upsert(ctx, domain.SyncState{
 			AccountID: s.cfg.AccountID,
 			LastUID:   maxUID,
 			SyncedAt:  timex.NowUTC(),
-		}
-		if err := s.cfg.SyncRepo.Upsert(ctx, newState); err != nil {
+		}); err != nil {
 			return err
 		}
 	}
@@ -155,6 +157,8 @@ func (s *Scheduler) poll(ctx context.Context) error {
 }
 
 func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error {
+	lang := features.DetectLanguage(msg.Subject)
+
 	e := domain.Email{
 		ID:         idx.GenerateID(),
 		AccountID:  s.cfg.AccountID,
@@ -165,10 +169,30 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		Date:       msg.Date,
 		Status:     domain.StatusNew,
 		ReceivedAt: timex.NowUTC(),
+		Language:   lang,
 	}
 
 	if err := s.cfg.EmailRepo.Upsert(ctx, e); err != nil {
 		return err
+	}
+
+	classification, err := s.cfg.Filter.Classify(ctx, e.ID, msg)
+	if err != nil {
+		return err
+	}
+
+	if err := s.cfg.ClassificationRepo.Save(ctx, classification); err != nil {
+		return err
+	}
+
+	if !s.shouldNotify(classification.Level) {
+		s.cfg.Logger.Debug("email ignored",
+			"account_id", s.cfg.AccountID,
+			"uid", msg.UID,
+			"level", string(classification.Level),
+			"score", classification.Score,
+		)
+		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
 	}
 
 	if err := s.cfg.Notifier.SendNewEmail(ctx, e); err != nil {
@@ -183,7 +207,22 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		"account_id", s.cfg.AccountID,
 		"uid", msg.UID,
 		"subject", msg.Subject,
+		"level", string(classification.Level),
+		"score", classification.Score,
+		"category", string(classification.Category),
 	)
 
 	return nil
+}
+
+func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
+	order := map[domain.ImportanceLevel]int{
+		domain.LevelIgnore:    0,
+		domain.LevelMaybe:     1,
+		domain.LevelImportant: 2,
+		domain.LevelCritical:  3,
+	}
+	min := order[s.cfg.MinImportance]
+	got := order[level]
+	return got >= min
 }

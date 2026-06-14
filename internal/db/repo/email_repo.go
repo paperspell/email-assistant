@@ -23,13 +23,14 @@ func NewEmailRepo(db *sql.DB) *EmailRepo {
 // Upsert inserts or replaces an email record.
 func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 	const q = `
-		INSERT INTO emails (id, account_id, message_uid, subject, from_email, from_name, date, status, received_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO emails (id, account_id, message_uid, subject, from_email, from_name, date, status, received_at, language)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (account_id, message_uid) DO UPDATE SET
 			subject    = excluded.subject,
 			from_email = excluded.from_email,
 			from_name  = excluded.from_name,
-			date       = excluded.date
+			date       = excluded.date,
+			language   = excluded.language
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		e.ID, e.AccountID, e.MessageUID,
@@ -37,6 +38,7 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 		e.Date.UTC().Format(time.RFC3339),
 		string(e.Status),
 		e.ReceivedAt.UTC().Format(time.RFC3339),
+		e.Language,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert email: %w", err)
@@ -48,7 +50,7 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 // Returns nil, nil if not found.
 func (r *EmailRepo) GetByAccountAndUID(ctx context.Context, accountID string, uid uint32) (*domain.Email, error) {
 	const q = `
-		SELECT id, account_id, message_uid, subject, from_email, from_name, date, status, received_at
+		SELECT id, account_id, message_uid, subject, from_email, from_name, date, status, received_at, language
 		FROM emails
 		WHERE account_id = ? AND message_uid = ?
 	`
@@ -80,7 +82,7 @@ func scanEmail(row *sql.Row) (*domain.Email, error) {
 	err := row.Scan(
 		&e.ID, &e.AccountID, &e.MessageUID,
 		&e.Subject, &e.FromEmail, &e.FromName,
-		&dateStr, &status, &receivedAtStr,
+		&dateStr, &status, &receivedAtStr, &e.Language,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

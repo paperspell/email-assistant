@@ -27,12 +27,16 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v3 v3.1.35302 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
+	github.com/pemistahl/lingua-go v1.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.46.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/adiantum v1.1.1 // indirect
 	modernc.org/sqlite v1.52.0 // indirect

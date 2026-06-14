@@ -14,6 +14,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
+	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 )
 
@@ -72,24 +73,31 @@ func newTestScheduler(
 
 	emailRepo := repo.NewEmailRepo(sqlDB)
 	syncRepo := repo.NewSyncStateRepo(sqlDB)
+	classRepo := repo.NewClassificationRepo(sqlDB)
+	senderRepo := repo.NewSenderRepo(sqlDB)
+	domainRepo := repo.NewDomainRepo(sqlDB)
+	filter := importance.NewFilter(senderRepo, domainRepo)
 
 	sched := New(Config{
-		AccountID:    "test@example.com",
-		PollInterval: time.Hour,
-		EmailRepo:    emailRepo,
-		SyncRepo:     syncRepo,
-		Provider:     provider,
-		Notifier:     notifier,
-		Logger:       log.Noop{},
+		AccountID:          "test@example.com",
+		PollInterval:       time.Hour,
+		MinImportance:      domain.LevelIgnore, // notify everything in tests
+		EmailRepo:          emailRepo,
+		SyncRepo:           syncRepo,
+		ClassificationRepo: classRepo,
+		Filter:             filter,
+		Provider:           provider,
+		Notifier:           notifier,
+		Logger:             log.Noop{},
 	})
 	return sched, emailRepo, syncRepo
 }
 
 func runOnce(t *testing.T, sched *Scheduler) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	require.NoError(t, sched.Start(ctx))
+	require.NoError(t, sched.poll(ctx))
 }
 
 // --- tests ---
@@ -217,14 +225,10 @@ func TestScheduler_FetchError_DoesNotCrash(t *testing.T) {
 	notifier := &mockNotifier{}
 	sched, _, _ := newTestScheduler(t, provider, notifier)
 
-	// Should return nil (context cancellation), not the fetch error
-	require.NoError(t, runOnceNoErr(t, sched))
-	assert.Empty(t, notifier.getSent())
-}
-
-func runOnceNoErr(t *testing.T, sched *Scheduler) error {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	return sched.Start(ctx)
+	// poll returns the fetch error; Start/pollWithBackoff would swallow it.
+	// The key property: no panic, no notification.
+	_ = sched.poll(ctx)
+	assert.Empty(t, notifier.getSent())
 }

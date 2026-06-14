@@ -267,7 +267,7 @@ Extracts domain from email address, detects language, matches keywords against s
 
 **Keyword dictionaries** (`keywords.go`)
 
-Keywords grouped by semantic meaning, covering English, Polish, Russian, Romanian, Italian, Belarusian, Ukrainian, Spanish, Portuguese, French, German, Kazakh, Yiddish:
+Keywords grouped by semantic meaning, covering English, Polish, Russian, Romanian, Italian, Belarusian, Ukrainian, Spanish, Portuguese, French, German, Kazakh, Hebrew:
 
 ```go
 var urgent = []string{

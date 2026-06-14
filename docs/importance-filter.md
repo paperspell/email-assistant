@@ -145,7 +145,7 @@ The filter must support multiple languages.
 
 Supported languages:
 
-text English Polish Russian Romanian Italian Belarusian Ukrainian Spanish Portuguese French German Kazakh Yiddish
+text English Polish Russian Romanian Italian Belarusian Ukrainian Spanish Portuguese French German Kazakh Hebrew
 
 Additional languages may be added later.
 

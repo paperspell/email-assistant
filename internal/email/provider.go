@@ -12,6 +12,10 @@ type Message struct {
 	FromEmail string
 	FromName  string
 	Date      time.Time
+	// Extra header fields used by the importance filter
+	InReplyTo       string // set when this is a reply in an active thread
+	ListUnsubscribe string // set on newsletters
+	Precedence      string // "bulk" or "list" on bulk mail
 }
 
 // Provider is the interface that all email backend implementations must satisfy.

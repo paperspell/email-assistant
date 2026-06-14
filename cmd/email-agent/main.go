@@ -14,11 +14,12 @@ import (
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/domain"
+	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
+	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/scheduler"
 	"github.com/paperspell/email-assistant/internal/telegram"
-
-	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
 )
 
 var version = "dev"
@@ -98,6 +99,11 @@ func runDaemon(ctx context.Context, path string) error {
 
 	emailRepo := repo.NewEmailRepo(sqlDB)
 	syncRepo := repo.NewSyncStateRepo(sqlDB)
+	classificationRepo := repo.NewClassificationRepo(sqlDB)
+	senderRepo := repo.NewSenderRepo(sqlDB)
+	domainRepo := repo.NewDomainRepo(sqlDB)
+
+	filter := importance.NewFilter(senderRepo, domainRepo)
 
 	imapClient := imapmail.NewClient(imapmail.Config{
 		Host:     cfg.Account.Host,
@@ -113,13 +119,16 @@ func runDaemon(ctx context.Context, path string) error {
 	}
 
 	sched := scheduler.New(scheduler.Config{
-		AccountID:    cfg.Account.Email,
-		PollInterval: cfg.Account.PollInterval,
-		EmailRepo:    emailRepo,
-		SyncRepo:     syncRepo,
-		Provider:     imapClient,
-		Notifier:     bot,
-		Logger:       logger.With("component", "scheduler"),
+		AccountID:          cfg.Account.Email,
+		PollInterval:       cfg.Account.PollInterval,
+		MinImportance:      domain.ImportanceLevel(cfg.Notification.MinImportance),
+		EmailRepo:          emailRepo,
+		SyncRepo:           syncRepo,
+		ClassificationRepo: classificationRepo,
+		Filter:             filter,
+		Provider:           imapClient,
+		Notifier:           bot,
+		Logger:             logger.With("component", "scheduler"),
 	})
 
 	return sched.Start(ctx)

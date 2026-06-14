@@ -12,10 +12,16 @@ import (
 
 // Config holds all application settings loaded from the database.
 type Config struct {
-	LogLevel string
-	DevMode  bool
-	Account  IMAPAccount
-	Telegram TelegramConfig
+	LogLevel     string
+	DevMode      bool
+	Account      IMAPAccount
+	Telegram     TelegramConfig
+	Notification NotificationConfig
+}
+
+// NotificationConfig controls when notifications are sent.
+type NotificationConfig struct {
+	MinImportance string // "critical", "important", "maybe" — default "important"
 }
 
 // IMAPAccount holds configuration for one IMAP account.
@@ -38,18 +44,19 @@ type TelegramConfig struct {
 
 // KnownKeys is the set of all valid settings keys.
 var KnownKeys = map[string]bool{
-	"account.name":          true,
-	"account.email":         true,
-	"account.imap.host":     true,
-	"account.imap.port":     true,
-	"account.imap.username": true,
-	"account.imap.password": true,
-	"account.imap.tls":      true,
-	"account.poll_interval": true,
-	"telegram.bot_token":    true,
-	"telegram.chat_id":      true,
-	"log.level":             true,
-	"dev_mode":              true,
+	"account.name":                true,
+	"account.email":               true,
+	"account.imap.host":           true,
+	"account.imap.port":           true,
+	"account.imap.username":       true,
+	"account.imap.password":       true,
+	"account.imap.tls":            true,
+	"account.poll_interval":       true,
+	"telegram.bot_token":          true,
+	"telegram.chat_id":            true,
+	"notification.min_importance": true,
+	"log.level":                   true,
+	"dev_mode":                    true,
 }
 
 // Load reads all settings from the database and returns a validated Config.
@@ -81,6 +88,9 @@ func defaults() *Config {
 			Port:         993,
 			TLS:          true,
 			PollInterval: time.Minute,
+		},
+		Notification: NotificationConfig{
+			MinImportance: "important",
 		},
 	}
 }
@@ -127,6 +137,9 @@ func applySettings(cfg *Config, s map[string]string) {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.Telegram.ChatID = id
 		}
+	}
+	if v := s["notification.min_importance"]; v != "" {
+		cfg.Notification.MinImportance = v
 	}
 }
 

@@ -23,4 +23,5 @@ type Email struct {
 	Date       time.Time
 	Status     EmailStatus
 	ReceivedAt time.Time
+	Language   string
 }
