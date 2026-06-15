@@ -1,7 +1,7 @@
 # 005-01-llm-classification.md
 
 Status: Draft
-Version: 0.2
+Version: 0.3
 
 # Stage 005 — LLM Classification
 
@@ -308,10 +308,10 @@ Add to `config.KnownKeys`, `Config` struct, `applySettings`, `defaults`.
 
 ```go
 type LLMConfig struct {
-    Provider           string
-    AnthropicAPIKey    string
-    OpenAIAPIKey       string
-    Model              string
+    Provider            string
+    AnthropicAPIKey     string
+    OpenAIAPIKey        string
+    Model               string
     ScoreDivergenceWarn int
 }
 
@@ -325,6 +325,9 @@ type Config struct {
     Content ContentConfig
 }
 ```
+
+Update `validate()` to make the entire LLM block optional: skip LLM key checks
+when `cfg.LLM.Provider == ""`.
 
 ---
 
@@ -345,7 +348,15 @@ type Message struct {
 - Truncate to 3 000 characters.
 - Fallback gracefully: if body fetch fails, log WARN and continue with empty body.
 
-The `Client` struct gains a `FetchBody bool` field, set from config at startup.
+The `Client` struct gains a `FetchBody bool` field. The value flows from config
+in `main.go` when constructing the IMAP client:
+
+```go
+imapClient := imapmail.NewClient(imapmail.Config{
+    // existing fields ...
+    FetchBody: cfg.Content.Mode == "full_body",
+})
+```
 
 ---
 
@@ -358,6 +369,8 @@ No concrete implementations here; each provider lives in its own sub-package.
 ---
 
 ### T6 — Anthropic provider
+
+Adds dependency: `github.com/anthropics/anthropic-sdk-go` (run `go get` as part of this task).
 
 `internal/llm/anthropic/client.go`
 
@@ -381,6 +394,8 @@ Uses the Anthropic tool-use API:
 ---
 
 ### T7 — OpenAI provider
+
+Adds dependency: `github.com/sashabaranov/go-openai` (run `go get` as part of this task).
 
 `internal/llm/openai/client.go`
 
@@ -410,9 +425,14 @@ func (r *ClassificationRepo) GetByEmailIDAndSource(
 ) (*domain.Classification, error)
 ```
 
-The existing `GetByEmailID` returns the first match; update it to return the
-`rule_based` record by default (for backwards compatibility with the handler's
-`details` lookup which already calls it).
+The existing `GetByEmailID` currently returns whichever row the DB returns first
+(no `ORDER BY`). After adding `source`, it must explicitly prefer the `rule_based`
+record so the handler's `details` command continues to work without changes:
+
+```sql
+SELECT ... FROM classifications WHERE email_id = ?
+ORDER BY (source = 'rule_based') DESC LIMIT 1
+```
 
 Update `Save` and scan functions to include `source` and `summary` columns.
 
@@ -468,10 +488,55 @@ or network blip does not silence notifications entirely.
 
 ---
 
+### T11a — Refactor cmd_init.go into section subcommands
+
+**Prerequisite for T11.** Currently `cmd_init.go` is a single monolithic `runInit`
+function. It must be split before `email-agent init llm` can be added cleanly and
+before the LLM section can be kept out of the full setup wizard.
+
+`cmd/email-agent/cmd_init.go`:
+
+1. Extract a `sectionFn` type:
+   ```go
+   type sectionFn func(ctx context.Context, sc *bufio.Scanner,
+       r *repo.SettingsRepo, current map[string]string) error
+   ```
+
+2. Extract three section functions from `runInit`:
+   - `configureAccount(ctx, sc, r, current) error`
+   - `configureTelegram(ctx, sc, r, current) error`
+   - `configureNotifications(ctx, sc, r, current) error`
+
+   Each section function reads current values from `current` and uses them as
+   prompt defaults. Password/token fields display `(Enter to keep unchanged)` and
+   skip saving when the user presses Enter.
+
+3. Add `newInitSectionCmd` helper that opens the existing DB (key from keychain),
+   runs migrations, loads current settings, and calls the given `sectionFn`.
+   Returns an error if the DB does not yet exist.
+
+4. Register the three existing sections as subcommands:
+   ```go
+   initCmd.AddCommand(
+       newInitSectionCmd(dbPath, "account",       "...", configureAccount),
+       newInitSectionCmd(dbPath, "telegram",      "...", configureTelegram),
+       newInitSectionCmd(dbPath, "notifications", "...", configureNotifications),
+       // email-agent init llm — added in T11
+   )
+   ```
+
+5. `runFullInit` (the root `init` command) calls all three section functions in
+   sequence as before. It still creates the DB and generates the encryption key
+   on first run. It does **not** call `configureLLM`.
+
+6. When the DB already exists and `email-agent init` is run without a subcommand,
+   hint the user: `"To reconfigure a single section use: email-agent init <account|telegram|notifications|llm>"`.
+
+---
+
 ### T11 — email-agent init llm subcommand
 
-The `init` command already supports section subcommands (`email-agent init account`,
-`email-agent init telegram`, `email-agent init notifications`). Add `email-agent init llm`
+The `init` command will have section subcommands after T11a. Add `email-agent init llm`
 following the same pattern.
 
 **LLM is never prompted during `email-agent init` (full setup).** It is always a separate
@@ -555,13 +620,34 @@ LLM provider tests use a fake HTTP server (no real API calls in CI).
 
 New external dependencies:
 
-| Package | Purpose |
-|---------|---------|
-| `github.com/anthropics/anthropic-sdk-go` | Anthropic API client |
-| `github.com/sashabaranov/go-openai` | OpenAI API client |
-| `golang.org/x/net/html` | HTML tag stripping for body mode |
+| Package | Purpose | Added in |
+|---------|---------|----------|
+| `github.com/anthropics/anthropic-sdk-go` | Anthropic API client | T6 |
+| `github.com/sashabaranov/go-openai` | OpenAI API client | T7 |
+| `golang.org/x/net/html` | HTML tag stripping for body mode | T4 |
 
 `golang.org/x/net` may already be an indirect dependency; check before adding.
+
+---
+
+## Recommended Task Order
+
+```
+T1  → domain: Source, Summary fields
+T2  → migration: source, summary columns
+T3  → config: LLMConfig, ContentConfig, validate() optional LLM
+T4  → IMAP: Body field, FetchBody, html strip, truncate
+T5  → LLM provider interface
+T6  → Anthropic client (adds SDK)
+T7  → OpenAI client (adds SDK)
+T8  → ClassificationRepo: source-aware methods, ORDER BY rule_based
+T9  → Scheduler: LLM integration, divergence logging
+T10 → Telegram: summary in notification, both results in details
+T11a→ Refactor cmd_init into section subcommands
+T11 → email-agent init llm subcommand
+T12 → Tests
+T13 → Docs
+```
 
 ---
 
