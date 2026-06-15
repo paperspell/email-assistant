@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -29,6 +30,10 @@ type Poller struct {
 
 // Run starts the polling loop. It blocks until ctx is cancelled.
 func (p *Poller) Run(ctx context.Context) error {
+	if err := p.ensureNoWebhook(ctx); err != nil {
+		return err
+	}
+
 	offset := p.loadOffset(ctx)
 	p.Logger.Info("telegram poller starting", "offset", offset)
 
@@ -65,6 +70,22 @@ func (p *Poller) Run(ctx context.Context) error {
 			p.saveOffset(ctx, offset)
 		}
 	}
+}
+
+func (p *Poller) ensureNoWebhook(ctx context.Context) error {
+	info, err := p.Bot.bot.GetWebhookInfoWithContext(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("get webhook info: %w", err)
+	}
+	if info.Url == "" {
+		return nil
+	}
+	p.Logger.Warn(fmt.Errorf("active webhook detected (%s) — deleting it to enable long polling", info.Url))
+	if _, err := p.Bot.bot.DeleteWebhookWithContext(ctx, nil); err != nil {
+		return fmt.Errorf("delete webhook: %w", err)
+	}
+	p.Logger.Info("webhook deleted; long polling is now active")
+	return nil
 }
 
 func (p *Poller) loadOffset(ctx context.Context) int64 {

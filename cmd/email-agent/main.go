@@ -38,13 +38,15 @@ func main() {
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to database file (default: ~/.email-agent/email-agent.db)")
 
+	var localDev bool
 	runCmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start the email monitoring daemon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDaemon(cmd.Context(), resolveDBPath(dbPath))
+			return runDaemon(cmd.Context(), resolveDBPath(dbPath), localDev)
 		},
 	}
+	runCmd.Flags().BoolVar(&localDev, "local-dev", false, "human-readable coloured logs at debug level (overrides DB settings)")
 
 	versionCmd := &cobra.Command{
 		Use:   "version",
@@ -65,7 +67,7 @@ func main() {
 	}
 }
 
-func runDaemon(ctx context.Context, path string) error {
+func runDaemon(ctx context.Context, path string, localDev bool) error {
 	hexKey, err := keychain.Load()
 	if err != nil {
 		return err
@@ -92,10 +94,12 @@ func runDaemon(ctx context.Context, path string) error {
 		return err
 	}
 
-	logger := log.NewLogger(log.LoggerConfig{
-		Dev:   cfg.DevMode,
-		Level: cfg.LogLevel,
-	})
+	logCfg := log.LoggerConfig{Dev: cfg.DevMode, Level: cfg.LogLevel}
+	if localDev {
+		logCfg.Dev = true
+		logCfg.Level = log.LevelDebug
+	}
+	logger := log.NewLogger(logCfg)
 	ctx = log.IntoContext(ctx, logger)
 	logger.Info("email-agent starting", "version", version)
 
