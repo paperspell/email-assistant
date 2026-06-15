@@ -38,15 +38,17 @@ func Save(hexKey string) (bool, error) {
 	return true, nil
 }
 
-// Load returns the encryption key from the OS keychain, falling back to the
-// EMAIL_AGENT_KEY environment variable. Returns an error if neither is set.
+// Load returns the encryption key, checking the EMAIL_AGENT_KEY environment
+// variable first, then the OS keychain. Returns an error if neither is set.
+// The env var takes precedence so it can override the keychain on servers or
+// in CI without touching system credentials.
 func Load() (string, error) {
+	if v := os.Getenv(EnvKey); v != "" {
+		return v, nil
+	}
 	key, err := keyring.Get(service, keyringUser)
 	if err == nil && key != "" {
 		return key, nil
-	}
-	if v := os.Getenv(EnvKey); v != "" {
-		return v, nil
 	}
 	return "", fmt.Errorf(
 		"encryption key not found: run 'email-agent init' or set the %s env var", EnvKey,
