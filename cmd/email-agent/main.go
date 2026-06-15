@@ -46,7 +46,8 @@ func main() {
 			return runDaemon(cmd.Context(), resolveDBPath(dbPath), localDev)
 		},
 	}
-	runCmd.Flags().BoolVar(&localDev, "local-dev", false, "human-readable coloured logs at debug level (overrides DB settings)")
+	runCmd.Flags().BoolVar(&localDev, "local-dev", false,
+		"human-readable coloured logs at debug level (overrides DB settings)")
 
 	versionCmd := &cobra.Command{
 		Use:   "version",
