@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/features"
 	"github.com/paperspell/email-assistant/internal/importance"
+	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/pkg/timex"
@@ -20,16 +22,18 @@ import (
 
 // Config holds all dependencies for the Scheduler.
 type Config struct {
-	AccountID          string
-	PollInterval       time.Duration
-	MinImportance      domain.ImportanceLevel
-	EmailRepo          *repo.EmailRepo
-	SyncRepo           *repo.SyncStateRepo
-	ClassificationRepo *repo.ClassificationRepo
-	Filter             *importance.Filter
-	Provider           email.Provider
-	Notifier           telegram.Notifier
-	Logger             log.Logger
+	AccountID           string
+	PollInterval        time.Duration
+	MinImportance       domain.ImportanceLevel
+	EmailRepo           *repo.EmailRepo
+	SyncRepo            *repo.SyncStateRepo
+	ClassificationRepo  *repo.ClassificationRepo
+	Filter              *importance.Filter
+	LLMProvider         llm.Provider // nil when LLM is disabled
+	ScoreDivergenceWarn int
+	Provider            email.Provider
+	Notifier            telegram.Notifier
+	Logger              log.Logger
 }
 
 // Scheduler polls an IMAP account and sends Telegram notifications for new emails.
@@ -177,25 +181,68 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		return err
 	}
 
-	classification, err := s.cfg.Filter.Classify(ctx, e.ID, msg)
+	// Rule-based classification
+	ruleClass, err := s.cfg.Filter.Classify(ctx, e.ID, msg)
 	if err != nil {
 		return err
 	}
-
-	if err := s.cfg.ClassificationRepo.Save(ctx, classification); err != nil {
+	if err := s.cfg.ClassificationRepo.Save(ctx, ruleClass); err != nil {
 		return err
 	}
 
-	if !s.shouldNotify(classification.Level) {
+	// Rule-based is the gate: if it says ignore, skip LLM entirely
+	if !s.shouldNotify(ruleClass.Level) {
 		s.cfg.Logger.Info("email ignored",
+			"account_id", s.cfg.AccountID,
+			"uid", msg.UID,
+			"from", msg.FromEmail,
+			"subject", msg.Subject,
+			"level", string(ruleClass.Level),
+			"score", ruleClass.Score,
+			"category", string(ruleClass.Category),
+			"reason", strings.Join(ruleClass.Reason, "; "),
+		)
+		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
+	}
+
+	// LLM classification (optional — non-fatal on error)
+	classification := ruleClass
+	if s.cfg.LLMProvider != nil {
+		req := buildLLMRequest(msg, lang)
+		llmResult, llmErr := s.cfg.LLMProvider.Classify(ctx, req)
+		if llmErr != nil {
+			s.cfg.Logger.Warn(fmt.Errorf("llm classify: %w", llmErr),
+				"account_id", s.cfg.AccountID, "uid", msg.UID)
+		} else {
+			llmClass := domain.Classification{
+				ID:           idx.GenerateID(),
+				EmailID:      e.ID,
+				Level:        llmResult.Level,
+				Category:     llmResult.Category,
+				Score:        llmResult.Score,
+				Reason:       llmResult.Reasons,
+				Summary:      llmResult.Summary,
+				ClassifiedAt: timex.NowUTC(),
+				Source:       domain.SourceLLM + ":" + s.cfg.LLMProvider.Name(),
+			}
+			if err := s.cfg.ClassificationRepo.Save(ctx, llmClass); err != nil {
+				return err
+			}
+			s.logDivergence(ruleClass, llmClass)
+			classification = llmClass
+		}
+	}
+
+	// Final notification decision uses the LLM result (or rule-based if LLM was skipped/failed)
+	if !s.shouldNotify(classification.Level) {
+		s.cfg.Logger.Info("email ignored after llm",
 			"account_id", s.cfg.AccountID,
 			"uid", msg.UID,
 			"from", msg.FromEmail,
 			"subject", msg.Subject,
 			"level", string(classification.Level),
 			"score", classification.Score,
-			"category", string(classification.Category),
-			"reason", strings.Join(classification.Reason, "; "),
+			"summary", classification.Summary,
 		)
 		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
 	}
@@ -221,7 +268,8 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		"level", string(classification.Level),
 		"score", classification.Score,
 		"category", string(classification.Category),
-		"reason", strings.Join(classification.Reason, "; "),
+		"source", classification.Source,
+		"summary", classification.Summary,
 	)
 
 	return nil
@@ -237,4 +285,38 @@ func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
 	threshold := order[s.cfg.MinImportance]
 	got := order[level]
 	return got >= threshold
+}
+
+func (s *Scheduler) logDivergence(rule, llmClass domain.Classification) {
+	threshold := s.cfg.ScoreDivergenceWarn
+	if threshold <= 0 {
+		threshold = 30
+	}
+	diff := rule.Score - llmClass.Score
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff >= threshold {
+		s.cfg.Logger.Warn(
+			fmt.Errorf("classification divergence: rule=%d llm=%d diff=%d", rule.Score, llmClass.Score, diff),
+			"email_id", rule.EmailID,
+			"rule_score", rule.Score,
+			"rule_level", string(rule.Level),
+			"llm_score", llmClass.Score,
+			"llm_level", string(llmClass.Level),
+			"provider", s.cfg.LLMProvider.Name(),
+		)
+	}
+}
+
+func buildLLMRequest(msg email.Message, lang string) llm.ClassifyRequest {
+	return llm.ClassifyRequest{
+		FromEmail:          msg.FromEmail,
+		FromName:           msg.FromName,
+		Subject:            msg.Subject,
+		Body:               msg.Body,
+		Language:           lang,
+		IsReply:            msg.InReplyTo != "",
+		HasListUnsubscribe: msg.ListUnsubscribe != "",
+	}
 }

@@ -53,12 +53,21 @@ func TestFormatMessage_EmptySubject(t *testing.T) {
 	assert.NotPanics(t, func() { formatMessage(e, testClassification) })
 }
 
-func TestFormatMessage_ContainsReasons(t *testing.T) {
-	e := domain.Email{
-		FromEmail: "x@y.com",
-		Date:      time.Now(),
+func TestFormatMessage_ShowsSummaryWhenPresent(t *testing.T) {
+	e := domain.Email{FromEmail: "x@y.com", Date: time.Now()}
+	c := domain.Classification{
+		Level:   domain.LevelImportant,
+		Score:   80,
+		Summary: "Quarterly budget review needs approval.",
 	}
+	msg := formatMessage(e, c)
+	assert.Contains(t, msg, "Summary: Quarterly budget review needs approval.")
+	assert.NotContains(t, msg, "Why:")
+}
+
+func TestFormatMessage_ShowsReasonsWhenNoSummary(t *testing.T) {
+	e := domain.Email{FromEmail: "x@y.com", Date: time.Now()}
 	msg := formatMessage(e, testClassification)
+	assert.Contains(t, msg, "Why:")
 	assert.Contains(t, msg, "baseline: +40")
-	assert.Contains(t, msg, "urgent keyword")
 }

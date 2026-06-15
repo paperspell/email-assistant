@@ -38,6 +38,8 @@ func TestClassificationRepo_Save_And_Get(t *testing.T) {
 		Score:        75,
 		Reason:       []string{"meeting keyword", "active conversation"},
 		ClassifiedAt: time.Now().UTC().Truncate(time.Second),
+		Source:       domain.SourceRuleBased,
+		Summary:      "",
 	}
 	require.NoError(t, r.Save(ctx, c))
 
@@ -48,6 +50,58 @@ func TestClassificationRepo_Save_And_Get(t *testing.T) {
 	assert.Equal(t, domain.CategoryWork, got.Category)
 	assert.Equal(t, 75, got.Score)
 	assert.Equal(t, c.Reason, got.Reason)
+	assert.Equal(t, domain.SourceRuleBased, got.Source)
+}
+
+func TestClassificationRepo_GetByEmailIDAndSource(t *testing.T) {
+	d := openTestDB(t)
+	r := NewClassificationRepo(d)
+	ctx := context.Background()
+
+	emailRepo := NewEmailRepo(d)
+	e := domain.Email{
+		ID: "email-02", AccountID: "acc1", MessageUID: 2,
+		Subject: "Test", FromEmail: "a@b.com",
+		Date:       time.Now().UTC().Truncate(time.Second),
+		Status:     domain.StatusNew,
+		ReceivedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, emailRepo.Upsert(ctx, e))
+
+	rule := domain.Classification{
+		ID: "cls-rule", EmailID: "email-02",
+		Level: domain.LevelMaybe, Score: 55,
+		Reason: []string{"baseline: +40"}, ClassifiedAt: time.Now().UTC().Truncate(time.Second),
+		Source: domain.SourceRuleBased,
+	}
+	llmC := domain.Classification{
+		ID: "cls-llm", EmailID: "email-02",
+		Level: domain.LevelImportant, Score: 80,
+		Reason: []string{"llm signal"}, Summary: "Work email needing action.",
+		ClassifiedAt: time.Now().UTC().Truncate(time.Second),
+		Source:       domain.SourceLLM + ":anthropic",
+	}
+	require.NoError(t, r.Save(ctx, rule))
+	require.NoError(t, r.Save(ctx, llmC))
+
+	// GetByEmailID should prefer rule_based
+	got, err := r.GetByEmailID(ctx, "email-02")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, domain.SourceRuleBased, got.Source)
+
+	// GetByEmailIDAndSource returns the specific one
+	gotLLM, err := r.GetByEmailIDAndSource(ctx, "email-02", domain.SourceLLM+":anthropic")
+	require.NoError(t, err)
+	require.NotNil(t, gotLLM)
+	assert.Equal(t, "Work email needing action.", gotLLM.Summary)
+	assert.Equal(t, domain.LevelImportant, gotLLM.Level)
+
+	// GetAllByEmailID returns both, rule_based first
+	all, err := r.GetAllByEmailID(ctx, "email-02")
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+	assert.Equal(t, domain.SourceRuleBased, all[0].Source)
 }
 
 func TestClassificationRepo_GetByEmailID_NotFound(t *testing.T) {

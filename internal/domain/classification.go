@@ -33,6 +33,12 @@ const (
 	CategoryOther      Category = "other"
 )
 
+// Classification source constants.
+const (
+	SourceRuleBased = "rule_based"
+	SourceLLM       = "llm" // prefix; full value is "llm:{provider}"
+)
+
 // Classification holds the result of classifying a single email.
 type Classification struct {
 	ID           string
@@ -42,6 +48,8 @@ type Classification struct {
 	Score        int
 	Reason       []string
 	ClassifiedAt time.Time
+	Source       string // SourceRuleBased or "llm:{provider}"
+	Summary      string // empty for rule_based; LLM-generated sentence(s)
 }
 
 // Sender tracks per-sender statistics used by the importance filter.

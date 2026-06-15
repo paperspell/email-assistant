@@ -99,6 +99,24 @@ func insertTestClassification(t *testing.T, r *repo.ClassificationRepo, emailID 
 		Score:        75,
 		Reason:       []string{"baseline: +40", "urgent keyword: +25", "unknown sender: -10"},
 		ClassifiedAt: time.Now().UTC().Truncate(time.Second),
+		Source:       domain.SourceRuleBased,
+	}
+	require.NoError(t, r.Save(context.Background(), c))
+	return c
+}
+
+func insertLLMClassification(t *testing.T, r *repo.ClassificationRepo, emailID string) domain.Classification {
+	t.Helper()
+	c := domain.Classification{
+		ID:           "class-llm-01",
+		EmailID:      emailID,
+		Level:        domain.LevelImportant,
+		Category:     domain.CategoryWork,
+		Score:        82,
+		Reason:       []string{"llm signal"},
+		Summary:      "Important work email requiring action.",
+		ClassifiedAt: time.Now().UTC().Truncate(time.Second),
+		Source:       domain.SourceLLM + ":mock",
 	}
 	require.NoError(t, r.Save(context.Background(), c))
 	return c
@@ -206,7 +224,7 @@ func TestHandler_Ignore_DecreasesExistingSenderScore(t *testing.T) {
 	assert.Equal(t, 60-feedbackNegativeDelta, sender.ImportanceScore)
 }
 
-func TestHandler_Details_SendsFollowUp(t *testing.T) {
+func TestHandler_Details_RuleBasedOnly(t *testing.T) {
 	h, emailRepo, _, classRepo, mockBot := newTestHandler(t)
 	ctx := context.Background()
 
@@ -220,11 +238,29 @@ func TestHandler_Details_SendsFollowUp(t *testing.T) {
 	msg := mockBot.followUps[0]
 	assert.Contains(t, msg, "Email details")
 	assert.Contains(t, msg, "boss@work.com")
-	assert.Contains(t, msg, "important")
-	assert.Contains(t, msg, "75")
+	assert.Contains(t, msg, "Rule-based classification")
 	assert.Contains(t, msg, "baseline: +40")
 	// keyboard must NOT be removed for details
 	assert.Empty(t, mockBot.removedKeys)
+}
+
+func TestHandler_Details_ShowsBothClassifications(t *testing.T) {
+	h, emailRepo, _, classRepo, mockBot := newTestHandler(t)
+	ctx := context.Background()
+
+	e := insertTestEmail(t, emailRepo, "email-01", "boss@work.com")
+	insertTestClassification(t, classRepo, e.ID)
+	insertLLMClassification(t, classRepo, e.ID)
+
+	update := makeUpdate("cq-01", "details:"+e.ID, 300)
+	require.NoError(t, h.Handle(ctx, update))
+
+	require.Len(t, mockBot.followUps, 1)
+	msg := mockBot.followUps[0]
+	assert.Contains(t, msg, "LLM classification")
+	assert.Contains(t, msg, "Important work email requiring action.")
+	assert.Contains(t, msg, "Rule-based classification")
+	assert.Contains(t, msg, "baseline: +40")
 }
 
 func TestHandler_UnknownAction_IsIgnored(t *testing.T) {

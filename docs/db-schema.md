@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `004_telegram_feedback.sql`
+Current schema reflects migrations up to: `005_llm_classification.sql`
 
 ```mermaid
 erDiagram
@@ -40,6 +40,8 @@ erDiagram
         INTEGER score "0–100"
         TEXT reason "JSON array of reason strings"
         DATETIME classified_at
+        TEXT source "rule_based | llm:anthropic | llm:openai"
+        TEXT summary "LLM-generated summary; empty for rule_based"
     }
 
     senders {

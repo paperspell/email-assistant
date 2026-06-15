@@ -82,10 +82,15 @@ func formatMessage(e domain.Email, c domain.Classification) string {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
 	}
 	date := e.Date.UTC().Format("02 Jan 2006 15:04 UTC")
-	return fmt.Sprintf(
-		"📧 New email\n\nFrom: %s\nSubject: %s\nDate: %s\n\nImportance: %s (score %d)\nWhy: %s",
-		from, e.Subject, date,
-		string(c.Level), c.Score,
-		strings.Join(c.Reason, "; "),
+
+	body := fmt.Sprintf(
+		"📧 New email\n\nFrom: %s\nSubject: %s\nDate: %s\n\nImportance: %s (score %d)",
+		from, e.Subject, date, string(c.Level), c.Score,
 	)
+	if c.Summary != "" {
+		body += "\nSummary: " + c.Summary
+	} else {
+		body += "\nWhy: " + strings.Join(c.Reason, "; ")
+	}
+	return body
 }

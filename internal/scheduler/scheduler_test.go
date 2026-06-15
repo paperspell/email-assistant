@@ -15,10 +15,33 @@ import (
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/importance"
+	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 )
 
 // --- mocks ---
+
+type mockLLMProvider struct {
+	mu     sync.Mutex
+	result llm.ClassifyResult
+	err    error
+	calls  int
+}
+
+func (m *mockLLMProvider) Name() string { return "mock" }
+
+func (m *mockLLMProvider) Classify(_ context.Context, _ llm.ClassifyRequest) (llm.ClassifyResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls++
+	return m.result, m.err
+}
+
+func (m *mockLLMProvider) getCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
+}
 
 type mockProvider struct {
 	messages []email.Message
@@ -71,6 +94,17 @@ func newTestScheduler(
 func newTestSchedulerWithLevel(
 	t *testing.T, provider email.Provider, notifier *mockNotifier, minImportance domain.ImportanceLevel,
 ) (*Scheduler, *repo.EmailRepo, *repo.SyncStateRepo) {
+	return newTestSchedulerFull(t, provider, notifier, minImportance, nil, 0)
+}
+
+func newTestSchedulerFull(
+	t *testing.T,
+	provider email.Provider,
+	notifier *mockNotifier,
+	minImportance domain.ImportanceLevel,
+	llmProvider llm.Provider,
+	divergenceWarn int,
+) (*Scheduler, *repo.EmailRepo, *repo.SyncStateRepo) {
 	t.Helper()
 	sqlDB, err := db.Open(":memory:", "")
 	require.NoError(t, err)
@@ -85,16 +119,18 @@ func newTestSchedulerWithLevel(
 	filter := importance.NewFilter(senderRepo, domainRepo)
 
 	sched := New(Config{
-		AccountID:          "test@example.com",
-		PollInterval:       time.Hour,
-		MinImportance:      minImportance,
-		EmailRepo:          emailRepo,
-		SyncRepo:           syncRepo,
-		ClassificationRepo: classRepo,
-		Filter:             filter,
-		Provider:           provider,
-		Notifier:           notifier,
-		Logger:             log.Noop{},
+		AccountID:           "test@example.com",
+		PollInterval:        time.Hour,
+		MinImportance:       minImportance,
+		EmailRepo:           emailRepo,
+		SyncRepo:            syncRepo,
+		ClassificationRepo:  classRepo,
+		Filter:              filter,
+		LLMProvider:         llmProvider,
+		ScoreDivergenceWarn: divergenceWarn,
+		Provider:            provider,
+		Notifier:            notifier,
+		Logger:              log.Noop{},
 	})
 	return sched, emailRepo, syncRepo
 }
@@ -318,6 +354,118 @@ func TestScheduler_MaybeEmail_IgnoredByDefault(t *testing.T) {
 	e, err := emailRepo.GetByAccountAndUID(context.Background(), "test@example.com", 10)
 	require.NoError(t, err)
 	assert.Equal(t, domain.StatusIgnored, e.Status)
+}
+
+// --- LLM integration tests ---
+
+func TestScheduler_LLMDisabled_BehavesAsRuleBased(t *testing.T) {
+	// No LLMProvider: rule-based result used for notification decision
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent meeting scheduled",
+		FromEmail: "boss@work.com",
+		Date:      time.Now(),
+	}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	// nil LLMProvider — rule-based governs
+	sched, _, syncRepo := newTestSchedulerFull(t, provider, notifier, domain.LevelImportant, nil, 0)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Len(t, notifier.getSent(), 1)
+}
+
+func TestScheduler_LLMCalled_WhenRuleBasedPasses(t *testing.T) {
+	// Rule-based says "important" (75 pts) → LLM is called; LLM also says "important"
+	// urgent+meeting = 75 → important
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent meeting scheduled",
+		FromEmail: "boss@work.com",
+		Date:      time.Now(),
+	}
+	mockLLM := &mockLLMProvider{result: llm.ClassifyResult{
+		Level:    domain.LevelImportant,
+		Category: domain.CategoryWork,
+		Score:    82,
+		Reasons:  []string{"llm signal"},
+		Summary:  "Important work meeting.",
+	}}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestSchedulerFull(t, provider, notifier, domain.LevelImportant, mockLLM, 0)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Len(t, notifier.getSent(), 1)
+	assert.Equal(t, 1, mockLLM.getCalls())
+}
+
+func TestScheduler_LLMOverrides_IgnoresWhenLLMSaysIgnore(t *testing.T) {
+	// Rule-based says "important" (75 pts) → passes gate → LLM called → LLM says "ignore" → no notification
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent meeting scheduled",
+		FromEmail: "boss@work.com",
+		Date:      time.Now(),
+	}
+	mockLLM := &mockLLMProvider{result: llm.ClassifyResult{
+		Level:   domain.LevelIgnore,
+		Score:   10,
+		Summary: "Marketing email disguised as urgent meeting.",
+	}}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestSchedulerFull(t, provider, notifier, domain.LevelImportant, mockLLM, 0)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent())
+}
+
+func TestScheduler_LLMError_FallsBackToRuleBased(t *testing.T) {
+	// LLM fails: rule-based result is used instead
+	msg := email.Message{
+		UID:       10,
+		Subject:   "urgent meeting scheduled",
+		FromEmail: "boss@work.com",
+		Date:      time.Now(),
+	}
+	mockLLM := &mockLLMProvider{err: errors.New("quota exceeded")}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestSchedulerFull(t, provider, notifier, domain.LevelImportant, mockLLM, 0)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	// Rule-based: urgent+meeting = 75 → important → should notify
+	assert.Len(t, notifier.getSent(), 1)
+}
+
+func TestScheduler_LLMNotCalledWhenRuleBasedIgnores(t *testing.T) {
+	// Newsletter ignored by rule-based → LLM should not be called at all
+	msg := email.Message{
+		UID:             10,
+		Subject:         "Big sale!",
+		FromEmail:       "news@shop.com",
+		Date:            time.Now(),
+		ListUnsubscribe: "<unsub@shop.com>",
+	}
+	mockLLM := &mockLLMProvider{result: llm.ClassifyResult{Level: domain.LevelImportant, Score: 90}}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestSchedulerFull(t, provider, notifier, domain.LevelImportant, mockLLM, 0)
+	priorRun(t, syncRepo, 9)
+
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent())
+	assert.Equal(t, 0, mockLLM.getCalls(), "LLM must not be called when rule-based ignores")
 }
 
 func TestScheduler_MaybeEmail_NotifiedWhenThresholdLowered(t *testing.T) {

@@ -99,11 +99,11 @@ func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email
 }
 
 func (h *Handler) handleDetails(ctx context.Context, e *domain.Email) error {
-	c, err := h.ClassificationRepo.GetByEmailID(ctx, e.ID)
+	all, err := h.ClassificationRepo.GetAllByEmailID(ctx, e.ID)
 	if err != nil {
 		return err
 	}
-	text := formatDetails(e, c)
+	text := formatDetails(e, all)
 	return h.Bot.SendFollowUp(ctx, text)
 }
 
@@ -139,7 +139,7 @@ func parseCallbackData(data string) (action, emailID string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-func formatDetails(e *domain.Email, c *domain.Classification) string {
+func formatDetails(e *domain.Email, all []domain.Classification) string {
 	from := e.FromEmail
 	if e.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
@@ -149,13 +149,43 @@ func formatDetails(e *domain.Email, c *domain.Classification) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "ℹ Email details\n\nFrom: %s\nSubject: %s\nDate: %s\n", from, e.Subject, date)
 
-	if c != nil {
+	// Separate LLM and rule-based results
+	var llmClass, ruleClass *domain.Classification
+	for i := range all {
+		c := &all[i]
+		if strings.HasPrefix(c.Source, domain.SourceLLM) {
+			llmClass = c
+		} else {
+			ruleClass = c
+		}
+	}
+
+	// Show LLM result first if available
+	if llmClass != nil {
+		fmt.Fprintf(&b, "\nLLM classification: %s (score %d)\nCategory: %s\n",
+			string(llmClass.Level), llmClass.Score, string(llmClass.Category))
+		if llmClass.Summary != "" {
+			fmt.Fprintf(&b, "Summary: %s\n", llmClass.Summary)
+		}
+	}
+
+	// Always show rule-based result
+	if ruleClass != nil {
+		fmt.Fprintf(&b, "\nRule-based classification: %s (score %d)\nReasons:\n",
+			string(ruleClass.Level), ruleClass.Score)
+		for _, r := range ruleClass.Reason {
+			fmt.Fprintf(&b, "  • %s\n", r)
+		}
+	} else if llmClass == nil && len(all) > 0 {
+		// Fallback: single classification of unknown source
+		c := all[0]
 		fmt.Fprintf(&b, "\nClassification: %s (score %d)\nCategory: %s\nReasons:\n",
 			string(c.Level), c.Score, string(c.Category))
 		for _, r := range c.Reason {
 			fmt.Fprintf(&b, "  • %s\n", r)
 		}
 	}
+
 	return b.String()
 }
 

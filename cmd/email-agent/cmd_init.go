@@ -17,40 +17,58 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 )
 
+// sectionFn configures one group of settings interactively.
+// current holds all settings already stored in the DB.
+type sectionFn func(
+	ctx context.Context,
+	sc *bufio.Scanner,
+	r *repo.SettingsRepo,
+	current map[string]string,
+) error
+
 func newInitCmd(dbPath *string) *cobra.Command {
-	return &cobra.Command{
+	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize the encrypted database with an interactive setup wizard",
+		Short: "Set up or reconfigure the email agent (subcommands reconfigure individual sections)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runInit(cmd.Context(), resolveDBPath(*dbPath))
+			return runFullInit(cmd.Context(), resolveDBPath(*dbPath))
 		},
 	}
+
+	initCmd.AddCommand(
+		newInitSectionCmd(dbPath, "account", "Reconfigure IMAP account settings", configureAccount),
+		newInitSectionCmd(dbPath, "telegram", "Reconfigure Telegram settings", configureTelegram),
+		newInitSectionCmd(dbPath, "notifications", "Reconfigure notification settings", configureNotifications),
+		newInitSectionCmd(dbPath, "llm", "Configure LLM classification (optional)", configureLLM),
+	)
+
+	return initCmd
 }
 
-func runInit(ctx context.Context, path string) error {
+// --- full setup ---
+
+func runFullInit(ctx context.Context, path string) error {
 	sc := bufio.NewScanner(os.Stdin)
 	_, dbExists := os.Stat(path)
 
 	var hexKey string
 
 	if dbExists == nil {
-		// DB already exists — confirm override
 		fmt.Printf("Database already exists at %s.\n", path)
-		answer := promptText(sc, "Override settings?", "n")
+		fmt.Println("To reconfigure a single section use: email-agent init <account|telegram|notifications|llm>")
+		answer := promptText(sc, "Override all settings?", "n")
 		if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
 			fmt.Println("Cancelled.")
 			return nil
 		}
 		fmt.Println()
 
-		// Load existing key — do not regenerate (DB is already encrypted with it)
 		var err error
 		hexKey, err = keychain.Load()
 		if err != nil {
 			return err
 		}
 	} else {
-		// Fresh setup
 		fmt.Println("Setting up Email Agent.")
 		fmt.Println()
 
@@ -90,55 +108,35 @@ func runInit(ctx context.Context, path string) error {
 		return err
 	}
 
-	fmt.Println("IMAP Account")
-	name := promptText(sc, "  Name", "")
-	email := promptText(sc, "  Email", "")
-	host := promptText(sc, "  Host", "")
-	port := promptText(sc, "  Port", "993")
-	username := promptText(sc, "  Username", email)
-	password, err := promptPassword("  Password", sc)
-	if err != nil {
-		return fmt.Errorf("read password: %w", err)
-	}
-	tlsVal := promptText(sc, "  TLS", "true")
-	pollInterval := promptText(sc, "  Poll interval", "1m")
+	r := repo.NewSettingsRepo(sqlDB)
 
+	current, _ := r.GetAll(ctx) //nolint:errcheck
+	if current == nil {
+		current = map[string]string{}
+	}
+
+	if err := configureAccount(ctx, sc, r, current); err != nil {
+		return err
+	}
 	fmt.Println()
-	fmt.Println("Telegram")
-	botToken, err := promptPassword("  Bot token", sc)
-	if err != nil {
-		return fmt.Errorf("read bot token: %w", err)
+	if err := configureTelegram(ctx, sc, r, current); err != nil {
+		return err
 	}
-	chatID := promptText(sc, "  Chat ID", "")
-
 	fmt.Println()
-	fmt.Println("Notifications")
-	minImportance := promptText(sc, "  Min importance (critical/important/maybe)", "important")
-
-	settings := map[string]string{
-		"account.name":                name,
-		"account.email":               email,
-		"account.imap.host":           host,
-		"account.imap.port":           port,
-		"account.imap.username":       username,
-		"account.imap.password":       password,
-		"account.imap.tls":            tlsVal,
-		"account.poll_interval":       pollInterval,
-		"telegram.bot_token":          botToken,
-		"telegram.chat_id":            chatID,
-		"notification.min_importance": minImportance,
-		"log.level":                   "info",
-		"dev_mode":                    "false",
+	if err := configureNotifications(ctx, sc, r, current); err != nil {
+		return err
 	}
 
-	settingsRepo := repo.NewSettingsRepo(sqlDB)
-	for k, v := range settings {
-		if err := settingsRepo.Set(ctx, k, v); err != nil {
-			return fmt.Errorf("save %s: %w", k, err)
+	// Persist defaults that are not prompted (LLM is never set during full init)
+	for k, v := range map[string]string{"log.level": "info", "dev_mode": "false"} {
+		if current[k] == "" {
+			if err := r.Set(ctx, k, v); err != nil {
+				return fmt.Errorf("save %s: %w", k, err)
+			}
 		}
 	}
 
-	if _, err := config.Load(ctx, settingsRepo); err != nil {
+	if _, err := config.Load(ctx, r); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
@@ -147,7 +145,195 @@ func runInit(ctx context.Context, path string) error {
 		action = "updated"
 	}
 	fmt.Printf("\nDone. Database %s at %s\nRun 'email-agent run' to start.\n", action, path)
+	fmt.Println("To enable LLM classification run: email-agent init llm")
 	return nil
+}
+
+// --- section subcommand infrastructure ---
+
+func newInitSectionCmd(dbPath *string, use, short string, fn sectionFn) *cobra.Command {
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runSectionInit(cmd.Context(), resolveDBPath(*dbPath), fn)
+		},
+	}
+}
+
+func runSectionInit(ctx context.Context, path string, fn sectionFn) error {
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("database not found at %s — run 'email-agent init' first", path)
+	}
+
+	hexKey, err := keychain.Load()
+	if err != nil {
+		return err
+	}
+
+	sqlDB, err := db.Open(path, hexKey)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer sqlDB.Close() //nolint:errcheck
+
+	if err := db.Migrate(ctx, sqlDB); err != nil {
+		return err
+	}
+
+	r := repo.NewSettingsRepo(sqlDB)
+	current, err := r.GetAll(ctx)
+	if err != nil {
+		return fmt.Errorf("load current settings: %w", err)
+	}
+
+	sc := bufio.NewScanner(os.Stdin)
+	if err := fn(ctx, sc, r, current); err != nil {
+		return err
+	}
+
+	fmt.Println("\nDone.")
+	return nil
+}
+
+// --- section functions ---
+
+func configureAccount(
+	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
+) error {
+	fmt.Println("IMAP Account")
+
+	name := promptText(sc, "  Name", current["account.name"])
+	email := promptText(sc, "  Email", current["account.email"])
+	host := promptText(sc, "  Host", current["account.imap.host"])
+	port := promptText(sc, "  Port", orDefault(current["account.imap.port"], "993"))
+	username := promptText(sc, "  Username", orDefault(current["account.imap.username"], email))
+	password, err := promptPassword("  Password (Enter to keep unchanged)", sc)
+	if err != nil {
+		return fmt.Errorf("read password: %w", err)
+	}
+	tlsVal := promptText(sc, "  TLS", orDefault(current["account.imap.tls"], "true"))
+	pollInterval := promptText(sc, "  Poll interval", orDefault(current["account.poll_interval"], "1m"))
+
+	settings := map[string]string{
+		"account.name":          name,
+		"account.email":         email,
+		"account.imap.host":     host,
+		"account.imap.port":     port,
+		"account.imap.username": username,
+		"account.imap.tls":      tlsVal,
+		"account.poll_interval": pollInterval,
+	}
+	if password != "" {
+		settings["account.imap.password"] = password
+	}
+	return saveSettings(ctx, r, settings)
+}
+
+func configureTelegram(
+	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
+) error {
+	fmt.Println("Telegram")
+
+	botToken, err := promptPassword("  Bot token (Enter to keep unchanged)", sc)
+	if err != nil {
+		return fmt.Errorf("read bot token: %w", err)
+	}
+	chatID := promptText(sc, "  Chat ID", current["telegram.chat_id"])
+
+	settings := map[string]string{
+		"telegram.chat_id": chatID,
+	}
+	if botToken != "" {
+		settings["telegram.bot_token"] = botToken
+	}
+	return saveSettings(ctx, r, settings)
+}
+
+func configureNotifications(
+	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
+) error {
+	fmt.Println("Notifications")
+
+	minImportance := promptText(
+		sc,
+		"  Min importance (critical/important/maybe)",
+		orDefault(current["notification.min_importance"], "important"),
+	)
+	return saveSettings(ctx, r, map[string]string{
+		"notification.min_importance": minImportance,
+	})
+}
+
+func configureLLM(
+	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
+) error {
+	fmt.Println("LLM Classification")
+	fmt.Println("  (press Enter at provider prompt to disable LLM)")
+
+	provider := promptText(sc, "  Provider (anthropic/openai)", current["llm.provider"])
+	provider = strings.ToLower(strings.TrimSpace(provider))
+
+	settings := map[string]string{"llm.provider": provider}
+
+	if provider == "" {
+		fmt.Println("  LLM disabled.")
+		return saveSettings(ctx, r, settings)
+	}
+
+	switch provider {
+	case "anthropic":
+		apiKey, err := promptPassword("  Anthropic API key (Enter to keep unchanged)", sc)
+		if err != nil {
+			return fmt.Errorf("read api key: %w", err)
+		}
+		if apiKey != "" {
+			settings["llm.anthropic.api_key"] = apiKey
+		}
+	case "openai":
+		apiKey, err := promptPassword("  OpenAI API key (Enter to keep unchanged)", sc)
+		if err != nil {
+			return fmt.Errorf("read api key: %w", err)
+		}
+		if apiKey != "" {
+			settings["llm.openai.api_key"] = apiKey
+		}
+	default:
+		return fmt.Errorf("unknown provider %q (valid: anthropic, openai)", provider)
+	}
+
+	model := promptText(sc, "  Model override (Enter for default)", current["llm.model"])
+	if model != "" {
+		settings["llm.model"] = model
+	}
+
+	contentMode := promptText(
+		sc,
+		"  Body access (headers_only/full_body)",
+		orDefault(current["content.mode"], "headers_only"),
+	)
+	settings["content.mode"] = contentMode
+
+	return saveSettings(ctx, r, settings)
+}
+
+// --- helpers ---
+
+func saveSettings(ctx context.Context, r *repo.SettingsRepo, settings map[string]string) error {
+	for k, v := range settings {
+		if err := r.Set(ctx, k, v); err != nil {
+			return fmt.Errorf("save %s: %w", k, err)
+		}
+	}
+	return nil
+}
+
+// orDefault returns a if non-empty, otherwise b.
+func orDefault(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 func promptText(sc *bufio.Scanner, label, defaultVal string) string {

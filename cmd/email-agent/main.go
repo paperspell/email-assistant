@@ -17,11 +17,14 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/importance"
+	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/scheduler"
 	"github.com/paperspell/email-assistant/internal/telegram"
 
 	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
+	llmanthropic "github.com/paperspell/email-assistant/internal/llm/anthropic"
+	llmopenai "github.com/paperspell/email-assistant/internal/llm/openai"
 )
 
 var version = "dev"
@@ -113,11 +116,12 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	filter := importance.NewFilter(senderRepo, domainRepo)
 
 	imapClient := imapmail.NewClient(imapmail.Config{
-		Host:     cfg.Account.Host,
-		Port:     cfg.Account.Port,
-		Username: cfg.Account.Username,
-		Password: cfg.Account.Password,
-		TLS:      cfg.Account.TLS,
+		Host:      cfg.Account.Host,
+		Port:      cfg.Account.Port,
+		Username:  cfg.Account.Username,
+		Password:  cfg.Account.Password,
+		TLS:       cfg.Account.TLS,
+		FetchBody: cfg.Content.Mode == "full_body",
 	})
 
 	bot, err := telegram.NewBot(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
@@ -125,17 +129,29 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		return fmt.Errorf("create telegram bot: %w", err)
 	}
 
+	var llmProvider llm.Provider
+	switch cfg.LLM.Provider {
+	case "anthropic":
+		llmProvider = llmanthropic.New(cfg.LLM.AnthropicAPIKey, cfg.LLM.Model)
+		logger.Info("LLM provider: anthropic", "model", cfg.LLM.Model)
+	case "openai":
+		llmProvider = llmopenai.New(cfg.LLM.OpenAIAPIKey, cfg.LLM.Model)
+		logger.Info("LLM provider: openai", "model", cfg.LLM.Model)
+	}
+
 	sched := scheduler.New(scheduler.Config{
-		AccountID:          cfg.Account.Email,
-		PollInterval:       cfg.Account.PollInterval,
-		MinImportance:      domain.ImportanceLevel(cfg.Notification.MinImportance),
-		EmailRepo:          emailRepo,
-		SyncRepo:           syncRepo,
-		ClassificationRepo: classificationRepo,
-		Filter:             filter,
-		Provider:           imapClient,
-		Notifier:           bot,
-		Logger:             logger.With("component", "scheduler"),
+		AccountID:           cfg.Account.Email,
+		PollInterval:        cfg.Account.PollInterval,
+		MinImportance:       domain.ImportanceLevel(cfg.Notification.MinImportance),
+		EmailRepo:           emailRepo,
+		SyncRepo:            syncRepo,
+		ClassificationRepo:  classificationRepo,
+		Filter:              filter,
+		LLMProvider:         llmProvider,
+		ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
+		Provider:            imapClient,
+		Notifier:            bot,
+		Logger:              logger.With("component", "scheduler"),
 	})
 
 	handler := &telegram.Handler{

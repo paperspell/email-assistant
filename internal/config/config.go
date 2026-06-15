@@ -17,6 +17,8 @@ type Config struct {
 	Account      IMAPAccount
 	Telegram     TelegramConfig
 	Notification NotificationConfig
+	LLM          LLMConfig
+	Content      ContentConfig
 }
 
 // NotificationConfig controls when notifications are sent.
@@ -42,6 +44,20 @@ type TelegramConfig struct {
 	ChatID   int64
 }
 
+// LLMConfig controls optional LLM-based classification.
+type LLMConfig struct {
+	Provider            string // "anthropic" | "openai" | "" (disabled)
+	AnthropicAPIKey     string
+	OpenAIAPIKey        string
+	Model               string // empty means use provider default
+	ScoreDivergenceWarn int    // log WARN when |llm_score - rule_score| >= this
+}
+
+// ContentConfig controls what content is sent to the LLM.
+type ContentConfig struct {
+	Mode string // "headers_only" | "full_body" — default "headers_only"
+}
+
 // KnownKeys is the set of all valid settings keys.
 var KnownKeys = map[string]bool{
 	"account.name":                true,
@@ -56,6 +72,12 @@ var KnownKeys = map[string]bool{
 	"telegram.chat_id":            true,
 	"telegram.update_offset":      true,
 	"notification.min_importance": true,
+	"llm.provider":                true,
+	"llm.anthropic.api_key":       true,
+	"llm.openai.api_key":          true,
+	"llm.model":                   true,
+	"llm.score_divergence_warn":   true,
+	"content.mode":                true,
 	"log.level":                   true,
 	"dev_mode":                    true,
 }
@@ -92,6 +114,12 @@ func defaults() *Config {
 		},
 		Notification: NotificationConfig{
 			MinImportance: "important",
+		},
+		LLM: LLMConfig{
+			ScoreDivergenceWarn: 30,
+		},
+		Content: ContentConfig{
+			Mode: "headers_only",
 		},
 	}
 }
@@ -142,6 +170,26 @@ func applySettings(cfg *Config, s map[string]string) {
 	if v := s["notification.min_importance"]; v != "" {
 		cfg.Notification.MinImportance = v
 	}
+	if v := s["llm.provider"]; v != "" {
+		cfg.LLM.Provider = v
+	}
+	if v := s["llm.anthropic.api_key"]; v != "" {
+		cfg.LLM.AnthropicAPIKey = v
+	}
+	if v := s["llm.openai.api_key"]; v != "" {
+		cfg.LLM.OpenAIAPIKey = v
+	}
+	if v := s["llm.model"]; v != "" {
+		cfg.LLM.Model = v
+	}
+	if v := s["llm.score_divergence_warn"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.LLM.ScoreDivergenceWarn = n
+		}
+	}
+	if v := s["content.mode"]; v != "" {
+		cfg.Content.Mode = v
+	}
 }
 
 func applyEnvOverrides(cfg *Config) {
@@ -171,6 +219,13 @@ func (c *Config) validate() error {
 	}
 	if c.Telegram.ChatID == 0 {
 		return fmt.Errorf("config: telegram.chat_id is required")
+	}
+	// LLM config is optional; only validate when a provider is set
+	if c.LLM.Provider == "anthropic" && c.LLM.AnthropicAPIKey == "" {
+		return fmt.Errorf("config: llm.anthropic.api_key is required when provider is anthropic")
+	}
+	if c.LLM.Provider == "openai" && c.LLM.OpenAIAPIKey == "" {
+		return fmt.Errorf("config: llm.openai.api_key is required when provider is openai")
 	}
 	return nil
 }

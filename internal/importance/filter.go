@@ -76,5 +76,6 @@ func (f *Filter) Classify(ctx context.Context, emailID string, msg email.Message
 		Score:        score,
 		Reason:       reasons,
 		ClassifiedAt: now,
+		Source:       domain.SourceRuleBased,
 	}, nil
 }

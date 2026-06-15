@@ -8,13 +8,18 @@ import (
 	"fmt"
 	"net"
 	"net/textproto"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2/imapclient"
+	"golang.org/x/net/html"
 
 	"github.com/paperspell/email-assistant/internal/email"
 
 	imaplib "github.com/emersion/go-imap/v2"
 )
+
+const maxBodyLen = 3000
 
 // extraHeaders lists the additional header fields fetched alongside ENVELOPE.
 var extraHeaders = []string{"In-Reply-To", "List-Unsubscribe", "Precedence"}
@@ -24,13 +29,18 @@ var extraHeaderSection = &imaplib.FetchItemBodySection{
 	HeaderFields: extraHeaders,
 }
 
+var bodySection = &imaplib.FetchItemBodySection{
+	Specifier: imaplib.PartSpecifierText,
+}
+
 // Config holds connection parameters for an IMAP server.
 type Config struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	TLS      bool
+	Host      string
+	Port      int
+	Username  string
+	Password  string
+	TLS       bool
+	FetchBody bool // fetch plain-text body when true (content.mode = full_body)
 }
 
 // Client implements email.Provider using IMAP.
@@ -103,9 +113,14 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 
 	uidSet := imaplib.UIDSetNum(uids...)
 	fetchOptions := &imaplib.FetchOptions{
-		Envelope:    true,
-		UID:         true,
-		BodySection: []*imaplib.FetchItemBodySection{extraHeaderSection},
+		Envelope: true,
+		UID:      true,
+		BodySection: []*imaplib.FetchItemBodySection{
+			extraHeaderSection,
+		},
+	}
+	if c.cfg.FetchBody {
+		fetchOptions.BodySection = append(fetchOptions.BodySection, bodySection)
 	}
 
 	msgs, err := c.client.Fetch(uidSet, fetchOptions).Collect()
@@ -113,7 +128,7 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 		return nil, fmt.Errorf("imap fetch: %w", err)
 	}
 
-	return parseMessages(msgs), nil
+	return parseMessages(msgs, c.cfg.FetchBody), nil
 }
 
 // Close logs out and closes the IMAP connection.
@@ -130,7 +145,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func parseMessages(msgs []*imapclient.FetchMessageBuffer) []email.Message {
+func parseMessages(msgs []*imapclient.FetchMessageBuffer, fetchBody bool) []email.Message {
 	out := make([]email.Message, 0, len(msgs))
 	for _, m := range msgs {
 		if m.Envelope == nil {
@@ -154,6 +169,12 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer) []email.Message {
 			msg.Precedence = h.Get("Precedence")
 		}
 
+		if fetchBody {
+			if bodyBytes := m.FindBodySection(bodySection); len(bodyBytes) > 0 {
+				msg.Body = truncate(stripHTML(string(bodyBytes)), maxBodyLen)
+			}
+		}
+
 		out = append(out, msg)
 	}
 	return out
@@ -168,4 +189,31 @@ func parseHeaderBytes(data []byte) textproto.MIMEHeader {
 		return textproto.MIMEHeader{}
 	}
 	return h
+}
+
+// stripHTML removes HTML tags and normalises whitespace.
+func stripHTML(s string) string {
+	z := html.NewTokenizer(strings.NewReader(s))
+	var b strings.Builder
+	for {
+		tt := z.Next()
+		if tt == html.ErrorToken {
+			break
+		}
+		if tt == html.TextToken {
+			b.Write(z.Text())
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// truncate cuts s to at most n bytes on a valid UTF-8 boundary.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for !utf8.ValidString(s[:n]) {
+		n--
+	}
+	return s[:n]
 }

@@ -63,3 +63,29 @@ email-agent config set <key> <value>
 | `ignore` | 0–29 | Skip |
 
 Emails below the threshold are stored in the database with `status=ignored` and logged at `info` level, but no Telegram message is sent.
+
+---
+
+## LLM Classification (optional)
+
+Configure via `email-agent init llm`. LLM is disabled when `llm.provider` is empty.
+
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `llm.provider` | `anthropic` `openai` `` | `` (disabled) | LLM provider; empty disables LLM |
+| `llm.anthropic.api_key` | string | — | Anthropic API key — stored encrypted |
+| `llm.openai.api_key` | string | — | OpenAI API key — stored encrypted |
+| `llm.model` | string | — | Model override; uses provider default when empty |
+| `llm.score_divergence_warn` | integer | `30` | Log WARN when LLM and rule-based scores differ by this much |
+
+Provider defaults: Anthropic → `claude-sonnet-4-6`, OpenAI → `gpt-4o-mini`.
+
+---
+
+## Content
+
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `content.mode` | `headers_only` `full_body` | `headers_only` | What is sent to the LLM; `full_body` fetches plain-text body (truncated to 3 000 chars) |
+
+Only relevant when `llm.provider` is set. Has no effect otherwise.

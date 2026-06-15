@@ -37,3 +37,21 @@
 # Useful for temporary debug sessions.
 #
 # LOG_LEVEL=debug
+
+# ---------------------------------------------------------------------------
+# LLM classification (configured via email-agent init llm)
+# ---------------------------------------------------------------------------
+
+# All LLM settings are stored in the encrypted database, not here.
+# Use the init wizard to set them:
+#
+#   email-agent init llm
+#
+# Available DB keys (see docs/settings.md for full reference):
+#
+#   llm.provider              = "anthropic" | "openai" | "" (disabled)
+#   llm.anthropic.api_key     = <key>         ← stored encrypted
+#   llm.openai.api_key        = <key>         ← stored encrypted
+#   llm.model                 = <optional model override>
+#   llm.score_divergence_warn = 30
+#   content.mode              = "headers_only" | "full_body"
