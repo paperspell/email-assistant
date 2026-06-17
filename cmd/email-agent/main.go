@@ -110,6 +110,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	emailRepo := repo.NewEmailRepo(sqlDB)
 	syncRepo := repo.NewSyncStateRepo(sqlDB)
 	classificationRepo := repo.NewClassificationRepo(sqlDB)
+	auditRepo := repo.NewAuditRepo(sqlDB)
 	senderRepo := repo.NewSenderRepo(sqlDB)
 	domainRepo := repo.NewDomainRepo(sqlDB)
 
@@ -121,7 +122,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		Username:  cfg.Account.Username,
 		Password:  cfg.Account.Password,
 		TLS:       cfg.Account.TLS,
-		FetchBody: cfg.Content.Mode == "full_body",
+		FetchBody: cfg.Content.Mode == "full_body" || cfg.Content.Mode == "redacted_body",
 		Logger:    logger.With("component", "imap"),
 	})
 
@@ -147,8 +148,10 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		EmailRepo:           emailRepo,
 		SyncRepo:            syncRepo,
 		ClassificationRepo:  classificationRepo,
+		AuditRepo:           auditRepo,
 		Filter:              filter,
 		LLMProvider:         llmProvider,
+		ContentMode:         cfg.Content.Mode,
 		ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 		Provider:            imapClient,
 		Notifier:            bot,

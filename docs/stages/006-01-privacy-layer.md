@@ -1,6 +1,6 @@
 # 006-01-privacy-layer.md
 
-Status: Draft
+Status: Implemented
 Version: 0.1
 
 # Stage 006 — Privacy Layer

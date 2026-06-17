@@ -17,6 +17,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/pkg/timex"
+	"github.com/paperspell/email-assistant/internal/privacy"
 	"github.com/paperspell/email-assistant/internal/telegram"
 )
 
@@ -28,8 +29,10 @@ type Config struct {
 	EmailRepo           *repo.EmailRepo
 	SyncRepo            *repo.SyncStateRepo
 	ClassificationRepo  *repo.ClassificationRepo
+	AuditRepo           *repo.AuditRepo
 	Filter              *importance.Filter
 	LLMProvider         llm.Provider // nil when LLM is disabled
+	ContentMode         string
 	ScoreDivergenceWarn int
 	Provider            email.Provider
 	Notifier            telegram.Notifier
@@ -213,7 +216,7 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 	// LLM classification (optional — non-fatal on error)
 	classification := ruleClass
 	if s.cfg.LLMProvider != nil {
-		req := buildLLMRequest(msg, lang)
+		req := buildLLMRequest(msg, lang, s.cfg.ContentMode)
 		llmResult, llmErr := s.cfg.LLMProvider.Classify(ctx, req)
 		if llmErr != nil {
 			s.cfg.Logger.Warn(fmt.Errorf("llm classify: %w", llmErr),
@@ -232,6 +235,21 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 			}
 			if err := s.cfg.ClassificationRepo.Save(ctx, llmClass); err != nil {
 				return err
+			}
+			if s.cfg.AuditRepo != nil {
+				auditErr := s.cfg.AuditRepo.Save(ctx, repo.AuditEntry{
+					ID:          idx.GenerateID(),
+					EmailID:     e.ID,
+					Provider:    s.cfg.LLMProvider.Name(),
+					Model:       llmClass.Source,
+					ContentMode: s.cfg.ContentMode,
+					BytesSent:   len(llm.FormatUserMessage(req)),
+					CreatedAt:   timex.NowUTC(),
+				})
+				if auditErr != nil {
+					s.cfg.Logger.Warn(fmt.Errorf("audit log: %w", auditErr),
+						"account_id", s.cfg.AccountID, "uid", msg.UID)
+				}
 			}
 			s.logDivergence(ruleClass, llmClass)
 			classification = llmClass
@@ -314,12 +332,19 @@ func (s *Scheduler) logDivergence(rule, llmClass domain.Classification) {
 	}
 }
 
-func buildLLMRequest(msg email.Message, lang string) llm.ClassifyRequest {
+func buildLLMRequest(msg email.Message, lang, contentMode string) llm.ClassifyRequest {
+	var body string
+	switch contentMode {
+	case "redacted_body":
+		body = privacy.Redact(msg.Body)
+	case "full_body":
+		body = msg.Body
+	}
 	return llm.ClassifyRequest{
 		FromEmail:          msg.FromEmail,
 		FromName:           msg.FromName,
 		Subject:            msg.Subject,
-		Body:               msg.Body,
+		Body:               body,
 		Language:           lang,
 		IsReply:            msg.InReplyTo != "",
 		HasListUnsubscribe: msg.ListUnsubscribe != "",

@@ -55,7 +55,7 @@ type LLMConfig struct {
 
 // ContentConfig controls what content is sent to the LLM.
 type ContentConfig struct {
-	Mode string // "headers_only" | "full_body" — default "headers_only"
+	Mode string // "headers_only" | "redacted_body" | "full_body" — default "headers_only"
 }
 
 // KnownKeys is the set of all valid settings keys.
@@ -219,6 +219,12 @@ func (c *Config) validate() error {
 	}
 	if c.Telegram.ChatID == 0 {
 		return fmt.Errorf("config: telegram.chat_id is required")
+	}
+	switch c.Content.Mode {
+	case "", "headers_only", "redacted_body", "full_body":
+		// valid
+	default:
+		return fmt.Errorf("config: unknown content.mode %q", c.Content.Mode)
 	}
 	// LLM config is optional; only validate when a provider is set
 	if c.LLM.Provider == "anthropic" && c.LLM.AnthropicAPIKey == "" {

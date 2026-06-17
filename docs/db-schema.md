@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `005_llm_classification.sql`
+Current schema reflects migrations up to: `006_audit_log.sql`
 
 ```mermaid
 erDiagram
@@ -66,6 +66,17 @@ erDiagram
         DATETIME tstamp
     }
 
+    llm_audit_log {
+        TEXT id PK "ULID"
+        TEXT email_id FK "references emails.id"
+        TEXT provider "anthropic | openai"
+        TEXT model "model name used"
+        TEXT content_mode "headers_only | redacted_body | full_body"
+        INTEGER bytes_sent "size of user message sent to LLM"
+        DATETIME created_at
+    }
+
     emails }o--|| sync_state : "account_id"
     classifications ||--|| emails : "email_id"
+    llm_audit_log }o--|| emails : "email_id"
 ```

@@ -86,6 +86,6 @@ Provider defaults: Anthropic → `claude-sonnet-4-6`, OpenAI → `gpt-4o-mini`.
 
 | Key | Values | Default | Description |
 |-----|--------|---------|-------------|
-| `content.mode` | `headers_only` `full_body` | `headers_only` | What is sent to the LLM; `full_body` fetches plain-text body (truncated to 3 000 chars) |
+| `content.mode` | `headers_only` `redacted_body` `full_body` | `headers_only` | What is sent to the LLM; `redacted_body` strips PII before sending; `full_body` sends the complete plain-text body (truncated to 3 000 chars) |
 
 Only relevant when `llm.provider` is set. Has no effect otherwise.

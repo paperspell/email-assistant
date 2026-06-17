@@ -307,9 +307,13 @@ func configureLLM(
 		settings["llm.model"] = model
 	}
 
+	fmt.Println("  Body access:")
+	fmt.Println("    headers_only  — subject and headers only (most private)")
+	fmt.Println("    redacted_body — body sent with PII replaced by [EMAIL], [PHONE], etc.")
+	fmt.Println("    full_body     — complete body, unmodified")
 	contentMode := promptText(
 		sc,
-		"  Body access (headers_only/full_body)",
+		"  Body access (headers_only/redacted_body/full_body)",
 		orDefault(current["content.mode"], "headers_only"),
 	)
 	settings["content.mode"] = contentMode

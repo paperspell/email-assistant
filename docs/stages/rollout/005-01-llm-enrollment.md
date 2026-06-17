@@ -32,14 +32,19 @@ LLM Classification
   Provider (anthropic/openai) []: anthropic
   Anthropic API key (Enter to keep unchanged): sk-ant-...
   Model override (Enter for default): 
-  Body access (headers_only/full_body) [headers_only]: 
+  Body access:
+    headers_only  — subject and headers only (most private)
+    redacted_body — body sent with PII replaced by [EMAIL], [PHONE], etc.
+    full_body     — complete body, unmodified
+  Body access (headers_only/redacted_body/full_body) [headers_only]: 
 ```
 
 - **Provider** — type `anthropic`
 - **API key** — paste your key (input is hidden)
 - **Model override** — press Enter to use the default (`claude-sonnet-4-6`)
-- **Body access** — `headers_only` sends only subject and headers (default, privacy-safe);
-  `full_body` also sends the plain-text email body for richer classification
+- **Body access** — `headers_only` sends only subject and headers (default, most private);
+  `redacted_body` sends the body with PII replaced by `[EMAIL]`, `[PHONE]`, etc.;
+  `full_body` sends the complete plain-text email body
 
 ### 3. Restart the daemon
 
@@ -94,13 +99,17 @@ LLM Classification
   Provider (anthropic/openai) []: openai
   OpenAI API key (Enter to keep unchanged): sk-...
   Model override (Enter for default): 
-  Body access (headers_only/full_body) [headers_only]: 
+  Body access:
+    headers_only  — subject and headers only (most private)
+    redacted_body — body sent with PII replaced by [EMAIL], [PHONE], etc.
+    full_body     — complete body, unmodified
+  Body access (headers_only/redacted_body/full_body) [headers_only]: 
 ```
 
 - **Provider** — type `openai`
 - **API key** — paste your key (input is hidden)
 - **Model override** — press Enter to use the default (`gpt-4o-mini`)
-- **Body access** — same choice as above
+- **Body access** — same choices as above
 
 ### 3. Restart the daemon
 
@@ -154,7 +163,7 @@ email-agent init llm
 ```
 
 Re-enter your current provider and key (or press Enter to keep unchanged),
-then choose `full_body` or `headers_only` at the body access prompt.
+then choose `headers_only`, `redacted_body`, or `full_body` at the body access prompt.
 
 ## Troubleshooting
 

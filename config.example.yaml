@@ -54,4 +54,4 @@
 #   llm.openai.api_key        = <key>         ← stored encrypted
 #   llm.model                 = <optional model override>
 #   llm.score_divergence_warn = 30
-#   content.mode              = "headers_only" | "full_body"
+#   content.mode              = "headers_only" | "redacted_body" | "full_body"
