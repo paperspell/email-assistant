@@ -291,6 +291,61 @@ Features:
 
 ---
 
+# Future Plans
+
+These are concrete proposals identified during development that are not yet scheduled into a stage.
+
+---
+
+## Plan A — IMAP Connection Resilience
+
+**Background:**
+The IMAP client connects once at daemon startup and never reconnects. When the server drops the connection (observed with Zoho Mail after idle periods), all subsequent poll attempts fail with `use of closed network connection`. The backoff retries exhaust their window and the daemon stops polling until restarted. This is invisible in logs without `RetryNotify` because `backoff.Retry` discards intermediate errors.
+
+**What was fixed:**
+- Added `backoff.RetryNotify` to surface intermediate poll errors at DEBUG level.
+- Added a logger to the IMAP client for per-step debug output (`uid search`, `fetch`, `body fetch`).
+- Split the IMAP body fetch into a separate command to work around a Zoho server bug where combining `BODY[HEADER.FIELDS (...)]` and `BODY[TEXT]` in one FETCH produces a malformed section-spec response.
+- Switched from `BODY[TEXT]` to `BODY.PEEK[TEXT]` so fetching the body does not set the `\Seen` flag on messages.
+
+**Remaining work:**
+Implement automatic reconnect in the IMAP client. When `FetchSince` or `fetchBodies` returns a connection-level error (EOF, `use of closed network connection`, or a parse error that closes the underlying TCP connection), the client should close and re-dial before the next poll attempt rather than failing repeatedly until the daemon is restarted.
+
+Suggested approach: track a `broken` flag on the client; when set, `FetchSince` calls `Connect` before issuing any IMAP commands. Alternatively, wrap the reconnect in the scheduler's poll loop so a single reconnect attempt is made before the backoff retry gives up.
+
+---
+
+## Plan B — Rule Learning from LLM Divergence
+
+**Background:**
+The rule-based scorer and LLM often disagree significantly (divergence ≥ 30 points). In one observed case the rule-based scored an email 70 (important) while the LLM correctly scored it 10 (ignore): the email was sent from and to the same address with a vague invoice request and no real details. The rules fired on "urgent" in the subject and "pay/invoice" keywords in the body without detecting the self-email pattern. The divergence threshold is already logged at WARN level; the missing piece is making the rules improve from these signals.
+
+**Proposed solutions (in recommended order):**
+
+### B1 — Self-email rule (immediate)
+Add a rule to `internal/importance/rules.go`: if `from_email == account_email`, apply a strong negative score (e.g. cap the total at 20). Self-sent emails are almost always test messages, automated scripts, or spoofing attempts. This is a direct correctness fix, not a weight-tuning issue.
+
+### B2 — Divergence analytics command (medium)
+Add `email-agent analyze` that queries classification pairs (`source=rule_based` and `source=llm:*`) with large divergence from the `classifications` table. Groups results by which rule `reason` strings appear most often on the high-scoring side when the LLM disagrees. Output example:
+
+```
+Rule signal                      Fired  LLM avg  Rule avg  Delta
+urgent keyword in subject           12       18       68     -50
+invoice keyword in body              8       22       62     -40
+known sender bonus                   5       75       80      +5
+```
+
+The human reviews the report and decides which weights to adjust. No automatic changes, fully auditable. The `reason` field is already stored per classification so no schema change is needed.
+
+### B3 — Automatic rule weight nudging (advanced)
+When a divergence fires AND the LLM score is in a high-confidence zone (≤ 20 or ≥ 80), treat the LLM result as a weak training signal. For each rule that contributed to the gap (identified from `reason` strings), update a `rule_effectiveness` record: fire count, LLM-agree count, cumulative weight delta. Periodically compute a suggested weight adjustment: `current_weight × agree_rate`, clamped to configured min/max bounds, with a minimum sample size before any change is applied. Changes are proposed via `email-agent tune apply` and require explicit confirmation before being written to settings.
+
+**Prerequisite for B2 and B3:** reason strings must encode the rule name and contribution delta in a stable, parseable format (e.g. `"urgent keyword in subject: +20"`). Current format already follows this convention.
+
+**Recommended sequence:** implement B1 now, collect 2–4 weeks of production divergence data, then evaluate whether B2 alone is sufficient or B3 is warranted.
+
+---
+
 # Future Ideas
 
 These ideas are intentionally outside the implementation plan.
