@@ -86,9 +86,14 @@ func (s *Scheduler) pollWithBackoff(ctx context.Context) {
 	bo := backoff.NewExponentialBackOff()
 	bo.MaxElapsedTime = 2 * time.Minute
 
-	err := backoff.Retry(func() error {
+	notify := func(err error, d time.Duration) {
+		s.cfg.Logger.Debug("poll error, retrying",
+			"account_id", s.cfg.AccountID, "err", err.Error(), "retry_in", d)
+	}
+
+	err := backoff.RetryNotify(func() error {
 		return s.poll(ctx)
-	}, backoff.WithContext(bo, ctx))
+	}, backoff.WithContext(bo, ctx), notify)
 
 	if err != nil {
 		s.cfg.Logger.Error(err, "account_id", s.cfg.AccountID)

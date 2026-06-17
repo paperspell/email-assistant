@@ -122,6 +122,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		Password:  cfg.Account.Password,
 		TLS:       cfg.Account.TLS,
 		FetchBody: cfg.Content.Mode == "full_body",
+		Logger:    logger.With("component", "imap"),
 	})
 
 	bot, err := telegram.NewBot(cfg.Telegram.BotToken, cfg.Telegram.ChatID)

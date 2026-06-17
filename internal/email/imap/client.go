@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/paperspell/email-assistant/internal/email"
+	"github.com/paperspell/email-assistant/internal/pkg/log"
 
 	imaplib "github.com/emersion/go-imap/v2"
 )
@@ -29,8 +30,12 @@ var extraHeaderSection = &imaplib.FetchItemBodySection{
 	HeaderFields: extraHeaders,
 }
 
-var bodySection = &imaplib.FetchItemBodySection{
+// peekBodySection fetches the plain-text body without setting the \Seen flag.
+// Peek is ignored by the server when echoing the section spec back, so
+// FindBodySection matches it correctly regardless of the Peek field.
+var peekBodySection = &imaplib.FetchItemBodySection{
 	Specifier: imaplib.PartSpecifierText,
+	Peek:      true,
 }
 
 // Config holds connection parameters for an IMAP server.
@@ -40,7 +45,8 @@ type Config struct {
 	Username  string
 	Password  string
 	TLS       bool
-	FetchBody bool // fetch plain-text body when true (content.mode = full_body)
+	FetchBody bool       // fetch plain-text body when true (content.mode = full_body)
+	Logger    log.Logger // nil → no debug output
 }
 
 // Client implements email.Provider using IMAP.
@@ -51,6 +57,9 @@ type Client struct {
 
 // NewClient creates an IMAP Client. Call Connect before using.
 func NewClient(cfg Config) *Client {
+	if cfg.Logger == nil {
+		cfg.Logger = log.Noop{}
+	}
 	return &Client{cfg: cfg}
 }
 
@@ -89,12 +98,17 @@ func (c *Client) Connect(_ context.Context) error {
 }
 
 // FetchSince returns messages with UID greater than lastUID.
+// Body is fetched in a separate IMAP command when FetchBody is true to avoid
+// a Zoho server bug where combining BODY[HEADER.FIELDS] and BODY[TEXT] in a
+// single FETCH produces a malformed section-spec in the response.
 func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("imap: not connected")
 	}
 
 	startUID := imaplib.UID(lastUID + 1)
+	c.cfg.Logger.Debug("imap uid search", "start_uid", uint32(startUID), "fetch_body", c.cfg.FetchBody)
+
 	criteria := &imaplib.SearchCriteria{
 		UID: []imaplib.UIDSet{
 			{{Start: startUID, Stop: 0}},
@@ -107,28 +121,70 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 	}
 
 	uids := searchData.AllUIDs()
+	c.cfg.Logger.Debug("imap uid search result", "found", len(uids))
 	if len(uids) == 0 {
 		return nil, nil
 	}
 
 	uidSet := imaplib.UIDSetNum(uids...)
-	fetchOptions := &imaplib.FetchOptions{
+
+	// First fetch: envelope + extra headers only.
+	c.cfg.Logger.Debug("imap fetch starting", "uids", len(uids))
+	msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
 		Envelope: true,
 		UID:      true,
 		BodySection: []*imaplib.FetchItemBodySection{
 			extraHeaderSection,
 		},
-	}
-	if c.cfg.FetchBody {
-		fetchOptions.BodySection = append(fetchOptions.BodySection, bodySection)
-	}
-
-	msgs, err := c.client.Fetch(uidSet, fetchOptions).Collect()
+	}).Collect()
 	if err != nil {
 		return nil, fmt.Errorf("imap fetch: %w", err)
 	}
+	c.cfg.Logger.Debug("imap fetch complete", "fetched", len(msgs))
 
-	return parseMessages(msgs, c.cfg.FetchBody), nil
+	result := parseMessages(msgs, c.cfg.Logger)
+
+	// Second fetch: body text only, in a separate command.
+	if c.cfg.FetchBody && len(result) > 0 {
+		bodies, err := c.fetchBodies(uidSet)
+		if err != nil {
+			c.cfg.Logger.Warn(fmt.Errorf("body fetch skipped, continuing without body: %w", err))
+		} else {
+			for i := range result {
+				if body, ok := bodies[result[i].UID]; ok {
+					result[i].Body = body
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// fetchBodies fetches plain-text body for each UID using BODY.PEEK[TEXT].
+// Returns a map of UID → stripped, truncated body text.
+func (c *Client) fetchBodies(uidSet imaplib.UIDSet) (map[uint32]string, error) {
+	c.cfg.Logger.Debug("imap body fetch starting")
+	msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
+		UID:         true,
+		BodySection: []*imaplib.FetchItemBodySection{peekBodySection},
+	}).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("imap body fetch: %w", err)
+	}
+
+	bodies := make(map[uint32]string, len(msgs))
+	for _, m := range msgs {
+		if bodyBytes := m.FindBodySection(peekBodySection); len(bodyBytes) > 0 {
+			body := truncate(stripHTML(string(bodyBytes)), maxBodyLen)
+			bodies[uint32(m.UID)] = body
+			c.cfg.Logger.Debug("imap body fetched", "uid", uint32(m.UID), "raw_bytes", len(bodyBytes), "stripped_len", len(body))
+		} else {
+			c.cfg.Logger.Debug("imap body not found in response", "uid", uint32(m.UID))
+		}
+	}
+	c.cfg.Logger.Debug("imap body fetch complete", "fetched", len(bodies))
+	return bodies, nil
 }
 
 // Close logs out and closes the IMAP connection.
@@ -145,10 +201,11 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func parseMessages(msgs []*imapclient.FetchMessageBuffer, fetchBody bool) []email.Message {
+func parseMessages(msgs []*imapclient.FetchMessageBuffer, logger log.Logger) []email.Message {
 	out := make([]email.Message, 0, len(msgs))
 	for _, m := range msgs {
 		if m.Envelope == nil {
+			logger.Debug("imap message skipped: no envelope", "uid", uint32(m.UID))
 			continue
 		}
 		msg := email.Message{
@@ -167,12 +224,6 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer, fetchBody bool) []emai
 			msg.InReplyTo = h.Get("In-Reply-To")
 			msg.ListUnsubscribe = h.Get("List-Unsubscribe")
 			msg.Precedence = h.Get("Precedence")
-		}
-
-		if fetchBody {
-			if bodyBytes := m.FindBodySection(bodySection); len(bodyBytes) > 0 {
-				msg.Body = truncate(stripHTML(string(bodyBytes)), maxBodyLen)
-			}
 		}
 
 		out = append(out, msg)
