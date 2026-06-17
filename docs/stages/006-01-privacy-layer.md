@@ -302,6 +302,32 @@ sched := scheduler.New(scheduler.Config{
 
 ---
 
+### T10 — Audit log viewer command
+
+`email-agent audit [--limit N]` — prints recent LLM audit log entries to stdout in a human-readable table.
+
+**New files / changes:**
+
+`internal/db/repo/audit_repo.go` — add `List` method:
+
+```go
+func (r *AuditRepo) List(ctx context.Context, limit int) ([]AuditEntry, error)
+```
+
+Queries `llm_audit_log ORDER BY created_at DESC LIMIT ?`.
+
+`cmd/email-agent/cmd_audit.go` — new file:
+
+```
+email-agent audit [--limit N]   (default: 20)
+```
+
+Output columns: `CREATED_AT  PROVIDER  MODEL  MODE  BYTES  EMAIL_ID`
+
+`cmd/email-agent/main.go` — add `newAuditCmd` to root command.
+
+---
+
 ## Dependencies
 
 No new external dependencies. Redaction uses Go's standard `regexp` package.
@@ -320,6 +346,7 @@ T6  → cmd_init.go: body access prompt update
 T7  → main.go: wire AuditRepo + ContentMode
 T8  → tests
 T9  → docs
+T10 → email-agent audit command
 ```
 
 ---
@@ -334,3 +361,4 @@ T9  → docs
 4. Every successful LLM call produces a row in `llm_audit_log`.
 5. An audit write failure does not suppress the notification.
 6. `email-agent init llm` presents all three body access options with descriptions.
+7. `email-agent audit` prints recent rows from `llm_audit_log` in a readable table.

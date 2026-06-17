@@ -60,7 +60,7 @@ func main() {
 		},
 	}
 
-	root.AddCommand(runCmd, versionCmd, newInitCmd(&dbPath), newConfigCmd(&dbPath))
+	root.AddCommand(runCmd, versionCmd, newInitCmd(&dbPath), newConfigCmd(&dbPath), newAuditCmd(&dbPath))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 
