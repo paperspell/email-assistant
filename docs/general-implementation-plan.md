@@ -246,6 +246,14 @@ Features:
 - Independent sync state
 - Per-account configuration
 
+Detailed plan: `docs/stages/007-01-multi-account.md`.
+
+OAuth readiness: this stage ships password auth only, but stores an `auth_type`
+discriminator and routes provider construction through a factory, so a later
+Gmail/Microsoft Graph OAuth backend slots in without a schema change or wiring
+rewrite. The OAuth mechanics themselves (token storage, consent flow,
+refresh-on-reconnect) are deferred to that backend stage.
+
 ---
 
 ## Stage 8 — Daemon Mode
