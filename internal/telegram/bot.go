@@ -87,9 +87,9 @@ func formatMessage(e domain.Email, c domain.Classification) string {
 
 	// Message is sent with HTML parse mode, so dynamic content must be escaped.
 	body := fmt.Sprintf(
-		"📧 New email\n\nFrom: %s\nSubject: %s\nDate: %s\n\n<b>%s Importance: %s (score %d)</b>",
-		html.EscapeString(from), html.EscapeString(e.Subject), date,
+		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\nFrom: %s\nSubject: %s\nDate: %s",
 		importanceIcon(c.Level), html.EscapeString(string(c.Level)), c.Score,
+		html.EscapeString(from), html.EscapeString(e.Subject), date,
 	)
 	if c.Summary != "" {
 		body += "\nSummary: " + html.EscapeString(c.Summary)
