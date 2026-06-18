@@ -29,7 +29,7 @@ func NewBot(token string, chatID int64) (*Bot, error) {
 // SendNewEmail sends a notification with an inline action keyboard.
 // Returns the Telegram message ID of the sent message.
 func (b *Bot) SendNewEmail(
-	_ context.Context, e domain.Email, c domain.Classification, accountName string,
+	_ context.Context, e domain.Email, c domain.Classification, accountName, accountEmail string,
 ) (int64, error) {
 	keyboard := gotgbot.InlineKeyboardMarkup{
 		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
@@ -38,7 +38,7 @@ func (b *Bot) SendNewEmail(
 			{Text: "ℹ Details", CallbackData: "details:" + e.ID},
 		}},
 	}
-	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c, accountName), &gotgbot.SendMessageOpts{
+	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c, accountName, accountEmail), &gotgbot.SendMessageOpts{
 		ReplyMarkup: keyboard,
 		ParseMode:   "HTML",
 	})
@@ -80,7 +80,7 @@ func (b *Bot) SendFollowUp(_ context.Context, text string) error {
 	return nil
 }
 
-func formatMessage(e domain.Email, c domain.Classification, accountName string) string {
+func formatMessage(e domain.Email, c domain.Classification, accountName, accountEmail string) string {
 	from := e.FromEmail
 	if e.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
@@ -92,8 +92,8 @@ func formatMessage(e domain.Email, c domain.Classification, accountName string) 
 		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\n",
 		importanceIcon(c.Level), html.EscapeString(string(c.Level)), c.Score,
 	)
-	if accountName != "" {
-		body += "Account: " + html.EscapeString(accountName) + "\n"
+	if label := accountLabel(accountName, accountEmail); label != "" {
+		body += "Account: " + html.EscapeString(label) + "\n"
 	}
 	body += fmt.Sprintf(
 		"From: %s\nSubject: %s\nDate: %s",
@@ -105,6 +105,20 @@ func formatMessage(e domain.Email, c domain.Classification, accountName string) 
 		body += "\nWhy: " + html.EscapeString(strings.Join(c.Reason, "; "))
 	}
 	return body
+}
+
+// accountLabel renders the source account as "Name <email>", falling back to
+// the email alone when no name is set, or "" when neither is provided. The email
+// keeps accounts distinguishable when several share the same name.
+func accountLabel(name, email string) string {
+	switch {
+	case name != "" && email != "":
+		return name + " <" + email + ">"
+	case email != "":
+		return email
+	default:
+		return name
+	}
 }
 
 // importanceIcon returns an emoji that conveys the importance level at a glance.

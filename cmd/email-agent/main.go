@@ -148,6 +148,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		sched := scheduler.New(scheduler.Config{
 			AccountID:           acc.ID,
 			AccountName:         acc.Name,
+			AccountEmail:        acc.Email,
 			PollInterval:        acc.PollInterval,
 			MinImportance:       domain.ImportanceLevel(cfg.Notification.MinImportance),
 			EmailRepo:           emailRepo,

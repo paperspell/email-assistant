@@ -300,19 +300,22 @@ SendNewEmail(ctx context.Context, e domain.Email, c domain.Classification, accou
 ```
 
 `internal/telegram/bot.go` — `formatMessage` prepends an account line when a
-label is present (HTML-escaped, like the other fields):
+label is present (HTML-escaped, like the other fields). The label is
+`Name <email>`, falling back to the email alone when no name is set, so accounts
+that share a display name stay distinguishable:
 
 ```
 📧 New email
 🟠 Importance: important (score 75)
 
-Account: Work (acme@work.com)
+Account: Work <acme@work.com>
 From: …
 Subject: …
 Date: …
 ```
 
-Update the `scheduler` call site to pass `s.cfg.AccountName`.
+Update the `scheduler` call site to pass `s.cfg.AccountName` and
+`s.cfg.AccountEmail`.
 
 ---
 

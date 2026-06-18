@@ -20,6 +20,43 @@ uses a temporary `localhost` loopback listener started by the CLI itself.
 
 ---
 
+## Alternatives Considered: Gmail API vs IMAP + XOAUTH2
+
+Both are reached with the same Google OAuth credentials; the question is the
+transport. **IMAP + XOAUTH2 is chosen** for this stage.
+
+| Dimension | IMAP + XOAUTH2 (chosen) | Gmail REST API |
+|-----------|------------------------|----------------|
+| Fit with existing code | Reuses the whole IMAP client; only `LOGIN`→`XOAUTH2` swap | New HTTP client, list/get, pagination, base64/payload parsing |
+| Sync model | Matches `FetchSince(lastUID uint32)` + `sync_state.last_uid` as-is | `messageId` + `historyId` cursor — needs a generalized (opaque/string) provider cursor and a split `sync_state` |
+| Multi-account uniformity | Same path as Zoho and any IMAP account | Gmail-specific; diverges from IMAP accounts |
+| Minimal scope | `https://mail.google.com/` (full access only) | `gmail.metadata` (no body) or `gmail.readonly` available |
+| Google verification burden | Restricted scope → verification / 7-day testing tokens | Read scopes are also restricted/sensitive → **about the same** |
+| Real-time delivery | Polling only | Push via Pub/Sub `watch` (needs a topic + pull subscription) |
+| Implementation size | Small (auth swap + token plumbing) | Substantially larger |
+
+**Why IMAP + XOAUTH2 wins here:** the app is a poll-based, UID-cursor,
+multi-provider triage tool. IMAP + XOAUTH2 is the smallest change that reuses the
+existing client and sync model and keeps every account on one code path. Gmail
+API's advantages — push, native History API, label/thread objects — matter at
+scale or for features the app does not yet have, and they do not reduce the
+OAuth/verification burden.
+
+**The one strong argument for the Gmail API**, noted deliberately: the
+`gmail.metadata` scope makes it *physically impossible* for the app to read
+message bodies, which aligns with the default `headers_only` content mode and the
+Privacy First principle. IMAP's minimum scope (`https://mail.google.com/`) grants
+full access regardless of content mode. If a hard guarantee of "bodies can never
+leave the mailbox" becomes a requirement, a Gmail-API/metadata transport is the
+cleaner choice and should be revisited.
+
+**This is not either/or.** The `auth_type` discriminator and `newProvider`
+factory let a Gmail API transport be added later as a separate provider behind the
+same `email.Provider` interface; only the cursor would need generalizing (from a
+`uint32` UID to an opaque per-account string). Deferred to a future stage.
+
+---
+
 ## What Changes
 
 | Before | After |

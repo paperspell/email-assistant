@@ -26,7 +26,7 @@ func TestFormatMessage_WithName(t *testing.T) {
 		Subject:   "Project update",
 		Date:      time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC),
 	}
-	msg := formatMessage(e, testClassification, "Work")
+	msg := formatMessage(e, testClassification, "Work", "work@acme.com")
 	// Angle brackets around the address are HTML-escaped for Telegram's parser.
 	assert.Contains(t, msg, "Alice Smith &lt;alice@example.com&gt;")
 	assert.Contains(t, msg, "Project update")
@@ -35,14 +35,25 @@ func TestFormatMessage_WithName(t *testing.T) {
 	assert.Contains(t, msg, "75")
 	// Importance is emphasised in bold with an icon for the level.
 	assert.Contains(t, msg, "<b>🟠 Importance: important (score 75)</b>")
-	// The source account is labelled.
-	assert.Contains(t, msg, "Account: Work")
+	// The source account is labelled with name and address (escaped).
+	assert.Contains(t, msg, "Account: Work &lt;work@acme.com&gt;")
 }
 
-func TestFormatMessage_OmitsAccountWhenEmpty(t *testing.T) {
+func TestFormatMessage_AccountLabelVariants(t *testing.T) {
 	e := domain.Email{FromEmail: "x@y.com", Date: time.Now()}
-	msg := formatMessage(e, testClassification, "")
-	assert.NotContains(t, msg, "Account:")
+
+	// Name + email → "Name <email>".
+	withBoth := formatMessage(e, testClassification, "Work", "work@acme.com")
+	assert.Contains(t, withBoth, "Account: Work &lt;work@acme.com&gt;")
+
+	// Email only (no name) → email alone, so accounts stay distinguishable.
+	emailOnly := formatMessage(e, testClassification, "", "work@acme.com")
+	assert.Contains(t, emailOnly, "Account: work@acme.com")
+	assert.NotContains(t, emailOnly, "&lt;")
+
+	// Neither → no account line.
+	neither := formatMessage(e, testClassification, "", "")
+	assert.NotContains(t, neither, "Account:")
 }
 
 func TestFormatMessage_WithoutName(t *testing.T) {
@@ -51,7 +62,7 @@ func TestFormatMessage_WithoutName(t *testing.T) {
 		Subject:   "Hello",
 		Date:      time.Now(),
 	}
-	msg := formatMessage(e, testClassification, "")
+	msg := formatMessage(e, testClassification, "", "")
 	assert.Contains(t, msg, "bob@example.com")
 	// A bare address is not wrapped in angle brackets (escaped or otherwise).
 	assert.NotContains(t, msg, "&lt;")
@@ -62,7 +73,7 @@ func TestFormatMessage_EmptySubject(t *testing.T) {
 		FromEmail: "x@y.com",
 		Date:      time.Now(),
 	}
-	assert.NotPanics(t, func() { formatMessage(e, testClassification, "") })
+	assert.NotPanics(t, func() { formatMessage(e, testClassification, "", "") })
 }
 
 func TestFormatMessage_ShowsSummaryWhenPresent(t *testing.T) {
@@ -72,14 +83,14 @@ func TestFormatMessage_ShowsSummaryWhenPresent(t *testing.T) {
 		Score:   80,
 		Summary: "Quarterly budget review needs approval.",
 	}
-	msg := formatMessage(e, c, "")
+	msg := formatMessage(e, c, "", "")
 	assert.Contains(t, msg, "Summary: Quarterly budget review needs approval.")
 	assert.NotContains(t, msg, "Why:")
 }
 
 func TestFormatMessage_ShowsReasonsWhenNoSummary(t *testing.T) {
 	e := domain.Email{FromEmail: "x@y.com", Date: time.Now()}
-	msg := formatMessage(e, testClassification, "")
+	msg := formatMessage(e, testClassification, "", "")
 	assert.Contains(t, msg, "Why:")
 	assert.Contains(t, msg, "baseline: +40")
 }

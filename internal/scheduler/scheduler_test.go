@@ -68,7 +68,7 @@ type mockNotifier struct {
 }
 
 func (m *mockNotifier) SendNewEmail(
-	_ context.Context, e domain.Email, _ domain.Classification, _ string,
+	_ context.Context, e domain.Email, _ domain.Classification, _, _ string,
 ) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
