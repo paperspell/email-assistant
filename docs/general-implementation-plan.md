@@ -256,7 +256,30 @@ refresh-on-reconnect) are deferred to that backend stage.
 
 ---
 
-## Stage 8 — Daemon Mode
+## Stage 8 — Gmail OAuth Backend
+
+Goal:
+
+Authenticate Gmail accounts with OAuth instead of a password, using the
+`auth_type` discriminator and provider factory introduced in Stage 7.
+
+Features:
+
+- Google OAuth client credentials stored once (global setting)
+- Per-account refresh/access token storage
+- Browser-based consent flow (loopback) during `account add`
+- IMAP login via XOAUTH2 with automatic access-token refresh
+- Graceful re-consent prompt when a refresh token is revoked or expires
+
+Detailed plan: `docs/stages/008-01-gmail-oauth.md`.
+
+Transport: Gmail over IMAP + XOAUTH2 (reuses the existing IMAP client). The
+Gmail API and Microsoft Graph backends remain future work behind the same
+`email.Provider` interface.
+
+---
+
+## Stage 9 — Daemon Mode
 
 Goal:
 
@@ -271,7 +294,7 @@ Features:
 
 ---
 
-## Stage 9 — Telegram Workflows
+## Stage 10 — Telegram Workflows
 
 Goal:
 
@@ -285,7 +308,7 @@ Features:
 
 ---
 
-## Stage 10 — Reply Assistance
+## Stage 11 — Reply Assistance
 
 Goal:
 
@@ -296,6 +319,32 @@ Features:
 - Reply draft generation
 - Suggested responses
 - Explicit confirmation before sending
+
+---
+
+## Stage 12 — Semi-Automatic Mode
+
+Goal:
+
+Reduce manual confirmations. Let the agent act on clear-cut emails on its own
+and only ask the user about genuinely important or ambiguous ones.
+
+Features:
+
+- Autonomy levels: `manual` (today's behaviour), `semi_auto`, configurable per
+  account or globally
+- Confidence-based auto-actions: auto-ignore obvious low-importance mail,
+  auto-mark newsletters/bulk as handled, without a Telegram prompt
+- Per-category / per-importance automation rules (e.g. notify on `critical`,
+  digest everything below `important`)
+- Periodic digest summary instead of one Telegram message per low-priority email
+- Auto-actions are limited to non-outbound, reversible triage (ignore, handled,
+  label); replies and any outbound action still require explicit confirmation,
+  per the User Control principle
+
+This stage builds on the existing feedback loop (Stage 4) and LLM confidence
+scoring (Stage 5), and complements — but never overrides — the
+[User Control](#user-control) guarantee.
 
 ---
 

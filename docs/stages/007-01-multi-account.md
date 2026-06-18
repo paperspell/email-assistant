@@ -476,9 +476,9 @@ T10 → docs
 - **OAuth authentication.** This stage stores the `auth_type` discriminator and
   routes provider construction through a factory so OAuth can be added without a
   schema change or wiring rewrite, but the OAuth mechanics themselves are
-  deferred to that later backend stage: token storage columns
-  (client id/secret, refresh token, access token + expiry), the browser consent
-  flow in `account add`, and refreshing the access token on reconnect (which
-  builds on Plan A — IMAP Connection Resilience).
+  deferred to Stage 8 — Gmail OAuth Backend (`docs/stages/008-01-gmail-oauth.md`):
+  token storage columns (client id/secret, refresh token, access token + expiry),
+  the browser consent flow in `account add`, and refreshing the access token on
+  reconnect (which builds on Plan A — IMAP Connection Resilience).
 - Hot reload of accounts without a daemon restart.
 ```
