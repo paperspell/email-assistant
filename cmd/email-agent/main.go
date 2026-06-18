@@ -16,6 +16,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
@@ -60,7 +61,10 @@ func main() {
 		},
 	}
 
-	root.AddCommand(runCmd, versionCmd, newInitCmd(&dbPath), newConfigCmd(&dbPath), newAuditCmd(&dbPath))
+	root.AddCommand(
+		runCmd, versionCmd,
+		newInitCmd(&dbPath), newConfigCmd(&dbPath), newAuditCmd(&dbPath), newAccountCmd(&dbPath),
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 
@@ -92,8 +96,9 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	}
 
 	settingsRepo := repo.NewSettingsRepo(sqlDB)
+	accountRepo := repo.NewAccountRepo(sqlDB)
 
-	cfg, err := config.Load(ctx, settingsRepo)
+	cfg, err := config.Load(ctx, settingsRepo, accountRepo)
 	if err != nil {
 		return err
 	}
@@ -116,16 +121,6 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 
 	filter := importance.NewFilter(senderRepo, domainRepo)
 
-	imapClient := imapmail.NewClient(imapmail.Config{
-		Host:      cfg.Account.Host,
-		Port:      cfg.Account.Port,
-		Username:  cfg.Account.Username,
-		Password:  cfg.Account.Password,
-		TLS:       cfg.Account.TLS,
-		FetchBody: cfg.Content.Mode == "full_body" || cfg.Content.Mode == "redacted_body",
-		Logger:    logger.With("component", "imap"),
-	})
-
 	bot, err := telegram.NewBot(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
 	if err != nil {
 		return fmt.Errorf("create telegram bot: %w", err)
@@ -141,22 +136,34 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		logger.Info("LLM provider: openai", "model", cfg.LLM.Model)
 	}
 
-	sched := scheduler.New(scheduler.Config{
-		AccountID:           cfg.Account.Email,
-		PollInterval:        cfg.Account.PollInterval,
-		MinImportance:       domain.ImportanceLevel(cfg.Notification.MinImportance),
-		EmailRepo:           emailRepo,
-		SyncRepo:            syncRepo,
-		ClassificationRepo:  classificationRepo,
-		AuditRepo:           auditRepo,
-		Filter:              filter,
-		LLMProvider:         llmProvider,
-		ContentMode:         cfg.Content.Mode,
-		ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
-		Provider:            imapClient,
-		Notifier:            bot,
-		Logger:              logger.With("component", "scheduler"),
-	})
+	fetchBody := cfg.Content.Mode == "full_body" || cfg.Content.Mode == "redacted_body"
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	for _, acc := range cfg.Accounts {
+		provider, err := newProvider(acc, fetchBody, logger)
+		if err != nil {
+			return err
+		}
+		sched := scheduler.New(scheduler.Config{
+			AccountID:           acc.ID,
+			AccountName:         acc.Name,
+			PollInterval:        acc.PollInterval,
+			MinImportance:       domain.ImportanceLevel(cfg.Notification.MinImportance),
+			EmailRepo:           emailRepo,
+			SyncRepo:            syncRepo,
+			ClassificationRepo:  classificationRepo,
+			AuditRepo:           auditRepo,
+			Filter:              filter,
+			LLMProvider:         llmProvider,
+			ContentMode:         cfg.Content.Mode,
+			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
+			Provider:            provider,
+			Notifier:            bot,
+			Logger:              logger.With("component", "scheduler", "account", acc.Email),
+		})
+		g.Go(func() error { return sched.Start(gCtx) })
+	}
 
 	handler := &telegram.Handler{
 		Bot:                bot,
@@ -173,13 +180,31 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		Logger:       logger.With("component", "telegram_poller"),
 	}
 
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error { return sched.Start(gCtx) })
 	g.Go(func() error { return poller.Run(gCtx) })
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("daemon: %w", err)
 	}
 	return nil
+}
+
+// newProvider builds the email provider for an account based on its auth type.
+// Only password IMAP is supported today; the switch is the seam where an OAuth
+// (Gmail/Graph) backend slots in without changing the daemon wiring.
+func newProvider(acc domain.Account, fetchBody bool, logger log.Logger) (email.Provider, error) {
+	switch acc.AuthType {
+	case "", domain.AuthPassword:
+		return imapmail.NewClient(imapmail.Config{
+			Host:      acc.Host,
+			Port:      acc.Port,
+			Username:  acc.Username,
+			Password:  acc.Password,
+			TLS:       acc.TLS,
+			FetchBody: fetchBody,
+			Logger:    logger.With("component", "imap", "account", acc.Email),
+		}), nil
+	default:
+		return nil, fmt.Errorf("account %q: unsupported auth_type %q", acc.Email, acc.AuthType)
+	}
 }
 
 func resolveDBPath(flagValue string) string {

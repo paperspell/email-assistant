@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `006_audit_log.sql`
+Current schema reflects migrations up to: `007_accounts.sql`
 
 ```mermaid
 erDiagram
@@ -27,9 +27,24 @@ erDiagram
     }
 
     settings {
-        TEXT key PK "dot-notation key e.g. account.imap.host"
+        TEXT key PK "dot-notation key e.g. telegram.bot_token"
         TEXT value
         DATETIME updated_at
+    }
+
+    accounts {
+        TEXT id PK "email address (= account_id elsewhere)"
+        TEXT name "display label"
+        TEXT email
+        TEXT imap_host
+        INTEGER imap_port
+        TEXT imap_username
+        TEXT imap_password "DB encrypted at rest"
+        INTEGER tls "1 = use TLS"
+        TEXT poll_interval "Go duration string e.g. 1m"
+        TEXT auth_type "password (oauth reserved)"
+        INTEGER enabled "1 = polled"
+        DATETIME created_at
     }
 
     classifications {
@@ -77,6 +92,8 @@ erDiagram
     }
 
     emails }o--|| sync_state : "account_id"
+    emails }o--|| accounts : "account_id"
+    sync_state ||--|| accounts : "account_id"
     classifications ||--|| emails : "email_id"
     llm_audit_log }o--|| emails : "email_id"
 ```

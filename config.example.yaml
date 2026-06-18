@@ -4,8 +4,15 @@
 # Copy it as a reference for the environment variables and CLI flags
 # that control how the daemon starts.
 #
-# Application settings (IMAP account, Telegram, notification thresholds, etc.)
-# are stored in the encrypted database. See docs/settings.md.
+# Application settings (Telegram, notification thresholds, etc.) are stored in
+# the encrypted database. See docs/settings.md.
+#
+# Email accounts are managed separately with the `account` subcommands and may
+# number more than one (each polled independently):
+#
+#   email-agent account add           # add an account
+#   email-agent account list          # list configured accounts
+#   email-agent account disable <id>  # stop polling one without removing it
 
 # ---------------------------------------------------------------------------
 # Database

@@ -28,7 +28,9 @@ func NewBot(token string, chatID int64) (*Bot, error) {
 
 // SendNewEmail sends a notification with an inline action keyboard.
 // Returns the Telegram message ID of the sent message.
-func (b *Bot) SendNewEmail(_ context.Context, e domain.Email, c domain.Classification) (int64, error) {
+func (b *Bot) SendNewEmail(
+	_ context.Context, e domain.Email, c domain.Classification, accountName string,
+) (int64, error) {
 	keyboard := gotgbot.InlineKeyboardMarkup{
 		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
 			{Text: "✓ Handled", CallbackData: "handled:" + e.ID},
@@ -36,7 +38,7 @@ func (b *Bot) SendNewEmail(_ context.Context, e domain.Email, c domain.Classific
 			{Text: "ℹ Details", CallbackData: "details:" + e.ID},
 		}},
 	}
-	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c), &gotgbot.SendMessageOpts{
+	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c, accountName), &gotgbot.SendMessageOpts{
 		ReplyMarkup: keyboard,
 		ParseMode:   "HTML",
 	})
@@ -78,7 +80,7 @@ func (b *Bot) SendFollowUp(_ context.Context, text string) error {
 	return nil
 }
 
-func formatMessage(e domain.Email, c domain.Classification) string {
+func formatMessage(e domain.Email, c domain.Classification, accountName string) string {
 	from := e.FromEmail
 	if e.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
@@ -87,8 +89,14 @@ func formatMessage(e domain.Email, c domain.Classification) string {
 
 	// Message is sent with HTML parse mode, so dynamic content must be escaped.
 	body := fmt.Sprintf(
-		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\nFrom: %s\nSubject: %s\nDate: %s",
+		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\n",
 		importanceIcon(c.Level), html.EscapeString(string(c.Level)), c.Score,
+	)
+	if accountName != "" {
+		body += "Account: " + html.EscapeString(accountName) + "\n"
+	}
+	body += fmt.Sprintf(
+		"From: %s\nSubject: %s\nDate: %s",
 		html.EscapeString(from), html.EscapeString(e.Subject), date,
 	)
 	if c.Summary != "" {

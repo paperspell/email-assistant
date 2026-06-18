@@ -8,5 +8,7 @@ import (
 
 // Notifier sends email notifications to the user.
 type Notifier interface {
-	SendNewEmail(ctx context.Context, e domain.Email, c domain.Classification) (int64, error)
+	// accountName labels which configured account the email arrived on; it may
+	// be empty for single-account setups.
+	SendNewEmail(ctx context.Context, e domain.Email, c domain.Classification, accountName string) (int64, error)
 }

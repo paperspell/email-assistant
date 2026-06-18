@@ -6,14 +6,8 @@ const (
 	KeyLogLevel = "log.level"
 	KeyDevMode  = "dev_mode"
 
-	KeyAccountName         = "account.name"
-	KeyAccountEmail        = "account.email"
-	KeyAccountHost         = "account.imap.host"
-	KeyAccountPort         = "account.imap.port"
-	KeyAccountUsername     = "account.imap.username"
-	KeyAccountPassword     = "account.imap.password"
-	KeyAccountTLS          = "account.imap.tls"
-	KeyAccountPollInterval = "account.poll_interval"
+	// Account fields live in the accounts table (see internal/db/repo/account_repo.go),
+	// managed via the `account` subcommands, not the settings key/value store.
 
 	KeyTelegramBotToken     = "telegram.bot_token"
 	KeyTelegramChatID       = "telegram.chat_id"

@@ -67,7 +67,9 @@ type mockNotifier struct {
 	failOn func(domain.Email) bool
 }
 
-func (m *mockNotifier) SendNewEmail(_ context.Context, e domain.Email, _ domain.Classification) (int64, error) {
+func (m *mockNotifier) SendNewEmail(
+	_ context.Context, e domain.Email, _ domain.Classification, _ string,
+) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failOn != nil && m.failOn(e) {
@@ -484,4 +486,75 @@ func TestScheduler_MaybeEmail_NotifiedWhenThresholdLowered(t *testing.T) {
 	runOnce(t, sched)
 
 	assert.Len(t, notifier.getSent(), 1)
+}
+
+// TestScheduler_MultiAccount_IndependentSyncState verifies that two schedulers
+// sharing one database but configured with distinct AccountIDs keep separate
+// sync cursors and do not cross-contaminate each other's state.
+func TestScheduler_MultiAccount_IndependentSyncState(t *testing.T) {
+	sqlDB, err := db.Open(":memory:", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.Migrate(context.Background(), sqlDB))
+
+	emailRepo := repo.NewEmailRepo(sqlDB)
+	syncRepo := repo.NewSyncStateRepo(sqlDB)
+	classRepo := repo.NewClassificationRepo(sqlDB)
+	senderRepo := repo.NewSenderRepo(sqlDB)
+	domainRepo := repo.NewDomainRepo(sqlDB)
+	filter := importance.NewFilter(senderRepo, domainRepo)
+
+	newSched := func(accountID string, provider email.Provider, notifier *mockNotifier) *Scheduler {
+		return New(Config{
+			AccountID:          accountID,
+			PollInterval:       time.Hour,
+			MinImportance:      domain.LevelIgnore,
+			EmailRepo:          emailRepo,
+			SyncRepo:           syncRepo,
+			ClassificationRepo: classRepo,
+			Filter:             filter,
+			Provider:           provider,
+			Notifier:           notifier,
+			Logger:             log.Noop{},
+		})
+	}
+
+	notifierA := &mockNotifier{}
+	notifierB := &mockNotifier{}
+	provA := &mockProvider{messages: []email.Message{
+		{UID: 100, Subject: "A1", FromEmail: "x@a.com", Date: time.Now()},
+	}}
+	provB := &mockProvider{messages: []email.Message{
+		{UID: 5, Subject: "B1", FromEmail: "y@b.com", Date: time.Now()},
+	}}
+
+	schedA := newSched("a@example.com", provA, notifierA)
+	schedB := newSched("b@example.com", provB, notifierB)
+
+	// Seed distinct prior cursors so the two accounts have unrelated state.
+	require.NoError(t, syncRepo.Upsert(context.Background(),
+		domain.SyncState{AccountID: "a@example.com", LastUID: 99, SyncedAt: time.Now()}))
+	require.NoError(t, syncRepo.Upsert(context.Background(),
+		domain.SyncState{AccountID: "b@example.com", LastUID: 4, SyncedAt: time.Now()}))
+
+	runOnce(t, schedA)
+	runOnce(t, schedB)
+
+	// Each provider was asked to fetch from its own account's cursor.
+	assert.Equal(t, uint32(99), provA.lastUID)
+	assert.Equal(t, uint32(4), provB.lastUID)
+
+	// Each account's cursor advanced independently to its own highest UID.
+	stateA, err := syncRepo.Get(context.Background(), "a@example.com")
+	require.NoError(t, err)
+	require.NotNil(t, stateA)
+	assert.Equal(t, uint32(100), stateA.LastUID)
+
+	stateB, err := syncRepo.Get(context.Background(), "b@example.com")
+	require.NoError(t, err)
+	require.NotNil(t, stateB)
+	assert.Equal(t, uint32(5), stateB.LastUID)
+
+	assert.Len(t, notifierA.getSent(), 1)
+	assert.Len(t, notifierB.getSent(), 1)
 }

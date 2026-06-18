@@ -23,18 +23,37 @@ email-agent config set <key> <value>
 
 ---
 
-## IMAP Account
+## Email Accounts
 
-| Key | Values | Default | Description |
-|-----|--------|---------|-------------|
-| `account.name` | string | — | Human-readable label used in log output |
-| `account.email` | email address | — | Account address; also used as the account identifier |
-| `account.imap.host` | hostname | — | IMAP server hostname |
-| `account.imap.port` | integer | `993` | IMAP server port |
-| `account.imap.username` | string | — | IMAP login username (usually the email address) |
-| `account.imap.password` | string | — | IMAP password — stored encrypted |
-| `account.imap.tls` | `true` `false` | `true` | Whether to use TLS; disable only for local/test servers |
-| `account.poll_interval` | duration | `1m` | How often to poll for new messages (e.g. `30s`, `1m`, `5m`) |
+Accounts are **not** stored as `config` keys. They live in a dedicated table and
+are managed with the `account` subcommands (the database may hold any number of
+accounts, each polled independently):
+
+```
+email-agent account add                 # interactive add
+email-agent account list                # show all accounts
+email-agent account edit    <email|name>
+email-agent account remove  <email|name>
+email-agent account enable  <email|name>
+email-agent account disable <email|name>
+```
+
+Each account has these fields (prompted by `account add`/`edit`):
+
+| Field | Values | Default | Description |
+|-------|--------|---------|-------------|
+| Name | string | — | Human-readable label; shown in notifications and log output |
+| Email | email address | — | Account address; also the account identifier |
+| Host | hostname | — | IMAP server hostname |
+| Port | integer | `993` | IMAP server port |
+| Username | string | email | IMAP login username (defaults to the email address) |
+| Password | string | — | IMAP password — stored in the encrypted database |
+| TLS | `true` `false` | `true` | Whether to use TLS; disable only for local/test servers |
+| Poll interval | duration | `1m` | How often to poll for new messages (e.g. `30s`, `1m`, `5m`) |
+| Auth type | `password` | `password` | Authentication method (`oauth` reserved for future Gmail/Graph support) |
+| Enabled | `true` `false` | `true` | Disabled accounts are skipped by the daemon |
+
+`email-agent init` configures the first account; use `account add` for more.
 
 ---
 

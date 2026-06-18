@@ -1,6 +1,6 @@
 # 007-01-multi-account.md
 
-Status: Draft
+Status: Implemented
 Version: 0.1
 
 # Stage 007 — Multi-Account Support

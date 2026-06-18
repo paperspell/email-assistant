@@ -36,7 +36,13 @@ func newInitCmd(dbPath *string) *cobra.Command {
 	}
 
 	initCmd.AddCommand(
-		newInitSectionCmd(dbPath, "account", "Reconfigure IMAP account settings", configureAccount),
+		&cobra.Command{
+			Use:   "account",
+			Short: "Add or reconfigure an email account",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				return runAccountAdd(cmd.Context(), resolveDBPath(*dbPath))
+			},
+		},
 		newInitSectionCmd(dbPath, "telegram", "Reconfigure Telegram settings", configureTelegram),
 		newInitSectionCmd(dbPath, "notifications", "Reconfigure notification settings", configureNotifications),
 		newInitSectionCmd(dbPath, "llm", "Configure LLM classification (optional)", configureLLM),
@@ -109,11 +115,12 @@ func runFullInit(ctx context.Context, path string) error {
 	}
 
 	r := repo.NewSettingsRepo(sqlDB)
+	ar := repo.NewAccountRepo(sqlDB)
 
 	current, _ := r.GetAll(ctx) //nolint:errcheck
 	applyDefaults(current)
 
-	if err := configureAccount(ctx, sc, r, current); err != nil {
+	if err := addOrEditAccount(ctx, sc, ar, nil); err != nil {
 		return err
 	}
 	fmt.Println()
@@ -134,7 +141,7 @@ func runFullInit(ctx context.Context, path string) error {
 		}
 	}
 
-	if _, err := config.Load(ctx, r); err != nil {
+	if _, err := config.Load(ctx, r, ar); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
@@ -143,6 +150,7 @@ func runFullInit(ctx context.Context, path string) error {
 		action = "updated"
 	}
 	fmt.Printf("\nDone. Database %s at %s\nRun 'email-agent run' to start.\n", action, path)
+	fmt.Println("Add more accounts with: email-agent account add")
 	fmt.Println("To enable LLM classification run: email-agent init llm")
 	return nil
 }
@@ -196,41 +204,6 @@ func runSectionInit(ctx context.Context, path string, fn sectionFn) error {
 }
 
 // --- section functions ---
-
-func configureAccount(
-	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
-) error {
-	fmt.Println("IMAP Account")
-
-	name := promptText(sc, "  Name", current[config.KeyAccountName])
-	email := promptText(sc, "  Email", current[config.KeyAccountEmail])
-	host := promptText(sc, "  Host", current[config.KeyAccountHost])
-	port := promptText(sc, "  Port", current[config.KeyAccountPort])
-	if current[config.KeyAccountUsername] == "" {
-		current[config.KeyAccountUsername] = email
-	}
-	username := promptText(sc, "  Username", current[config.KeyAccountUsername])
-	password, err := promptPassword("  Password (Enter to keep unchanged)", sc)
-	if err != nil {
-		return fmt.Errorf("read password: %w", err)
-	}
-	tlsVal := promptText(sc, "  TLS", current[config.KeyAccountTLS])
-	pollInterval := promptText(sc, "  Poll interval", current[config.KeyAccountPollInterval])
-
-	settings := map[string]string{
-		config.KeyAccountName:         name,
-		config.KeyAccountEmail:        email,
-		config.KeyAccountHost:         host,
-		config.KeyAccountPort:         port,
-		config.KeyAccountUsername:     username,
-		config.KeyAccountTLS:          tlsVal,
-		config.KeyAccountPollInterval: pollInterval,
-	}
-	if password != "" {
-		settings[config.KeyAccountPassword] = password
-	}
-	return saveSettings(ctx, r, settings)
-}
 
 func configureTelegram(
 	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,

@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/domain"
 )
 
 // Config holds all application settings loaded from the database.
 type Config struct {
 	LogLevel     string
 	DevMode      bool
-	Account      IMAPAccount
+	Accounts     []domain.Account
 	Telegram     TelegramConfig
 	Notification NotificationConfig
 	LLM          LLMConfig
@@ -24,18 +24,6 @@ type Config struct {
 // NotificationConfig controls when notifications are sent.
 type NotificationConfig struct {
 	MinImportance string // "critical", "important", "maybe" — default "important"
-}
-
-// IMAPAccount holds configuration for one IMAP account.
-type IMAPAccount struct {
-	Name         string
-	Email        string
-	Host         string
-	Port         int
-	Username     string
-	Password     string
-	TLS          bool
-	PollInterval time.Duration
 }
 
 // TelegramConfig holds Telegram bot configuration.
@@ -64,25 +52,15 @@ func DefaultValues() map[string]string {
 	d := defaults()
 	return map[string]string{
 		KeyLogLevel:                  d.LogLevel,
-		KeyAccountPort:               strconv.Itoa(d.Account.Port),
-		KeyAccountTLS:                strconv.FormatBool(d.Account.TLS),
-		KeyAccountPollInterval:       d.Account.PollInterval.String(),
 		KeyNotificationMinImportance: d.Notification.MinImportance,
 		KeyLLMScoreDivergenceWarn:    strconv.Itoa(d.LLM.ScoreDivergenceWarn),
 		KeyContentMode:               d.Content.Mode,
 	}
 }
 
-// KnownKeys is the set of all valid settings keys.
+// KnownKeys is the set of all valid settings keys. Account fields are stored in
+// the accounts table (managed via the `account` subcommands), not here.
 var KnownKeys = map[string]bool{
-	KeyAccountName:               true,
-	KeyAccountEmail:              true,
-	KeyAccountHost:               true,
-	KeyAccountPort:               true,
-	KeyAccountUsername:           true,
-	KeyAccountPassword:           true,
-	KeyAccountTLS:                true,
-	KeyAccountPollInterval:       true,
 	KeyTelegramBotToken:          true,
 	KeyTelegramChatID:            true,
 	KeyTelegramUpdateOffset:      true,
@@ -97,8 +75,9 @@ var KnownKeys = map[string]bool{
 	KeyDevMode:                   true,
 }
 
-// Load reads all settings from the database and returns a validated Config.
-func Load(ctx context.Context, r *repo.SettingsRepo) (*Config, error) {
+// Load reads settings and enabled accounts from the database and returns a
+// validated Config.
+func Load(ctx context.Context, r *repo.SettingsRepo, a *repo.AccountRepo) (*Config, error) {
 	all, err := r.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load settings: %w", err)
@@ -112,6 +91,11 @@ func Load(ctx context.Context, r *repo.SettingsRepo) (*Config, error) {
 	applySettings(cfg, all)
 	applyEnvOverrides(cfg)
 
+	cfg.Accounts, err = a.ListEnabled(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load accounts: %w", err)
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -122,11 +106,6 @@ func Load(ctx context.Context, r *repo.SettingsRepo) (*Config, error) {
 func defaults() *Config {
 	return &Config{
 		LogLevel: "info",
-		Account: IMAPAccount{
-			Port:         993,
-			TLS:          true,
-			PollInterval: time.Minute,
-		},
 		Notification: NotificationConfig{
 			MinImportance: "important",
 		},
@@ -145,34 +124,6 @@ func applySettings(cfg *Config, s map[string]string) {
 	}
 	if v := s[KeyDevMode]; v != "" {
 		cfg.DevMode = v == "true"
-	}
-	if v := s[KeyAccountName]; v != "" {
-		cfg.Account.Name = v
-	}
-	if v := s[KeyAccountEmail]; v != "" {
-		cfg.Account.Email = v
-	}
-	if v := s[KeyAccountHost]; v != "" {
-		cfg.Account.Host = v
-	}
-	if v := s[KeyAccountPort]; v != "" {
-		if p, err := strconv.Atoi(v); err == nil {
-			cfg.Account.Port = p
-		}
-	}
-	if v := s[KeyAccountUsername]; v != "" {
-		cfg.Account.Username = v
-	}
-	if v := s[KeyAccountPassword]; v != "" {
-		cfg.Account.Password = v
-	}
-	if v := s[KeyAccountTLS]; v != "" {
-		cfg.Account.TLS = v == "true"
-	}
-	if v := s[KeyAccountPollInterval]; v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			cfg.Account.PollInterval = d
-		}
 	}
 	if v := s[KeyTelegramBotToken]; v != "" {
 		cfg.Telegram.BotToken = v
@@ -214,20 +165,19 @@ func applyEnvOverrides(cfg *Config) {
 }
 
 func (c *Config) validate() error {
-	if c.Account.Host == "" {
-		return fmt.Errorf("config: %s is required", KeyAccountHost)
+	if len(c.Accounts) == 0 {
+		return fmt.Errorf("config: no enabled accounts configured — run 'email-agent account add'")
 	}
-	if c.Account.Username == "" {
-		return fmt.Errorf("config: %s is required", KeyAccountUsername)
-	}
-	if c.Account.Password == "" {
-		return fmt.Errorf("config: %s is required", KeyAccountPassword)
-	}
-	if c.Account.Port == 0 {
-		return fmt.Errorf("config: %s is required", KeyAccountPort)
-	}
-	if c.Account.PollInterval <= 0 {
-		return fmt.Errorf("config: %s must be positive", KeyAccountPollInterval)
+	for _, acc := range c.Accounts {
+		if acc.Host == "" || acc.Username == "" || acc.Password == "" {
+			return fmt.Errorf("config: account %q is missing host, username, or password", acc.Email)
+		}
+		if acc.Port == 0 {
+			return fmt.Errorf("config: account %q has invalid port", acc.Email)
+		}
+		if acc.PollInterval <= 0 {
+			return fmt.Errorf("config: account %q has non-positive poll_interval", acc.Email)
+		}
 	}
 	if c.Telegram.BotToken == "" {
 		return fmt.Errorf("config: %s is required", KeyTelegramBotToken)

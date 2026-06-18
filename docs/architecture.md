@@ -336,7 +336,7 @@ The MVP architecture should support future growth but implement only:
 
 - Local config
 - SQLite
-- One IMAP account
+- One or more IMAP accounts (one scheduler goroutine per enabled account)
 - Email polling
 - Telegram notifications
 - Basic rule-based filtering

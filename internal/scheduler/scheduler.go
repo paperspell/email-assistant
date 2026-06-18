@@ -24,6 +24,7 @@ import (
 // Config holds all dependencies for the Scheduler.
 type Config struct {
 	AccountID           string
+	AccountName         string
 	PollInterval        time.Duration
 	MinImportance       domain.ImportanceLevel
 	EmailRepo           *repo.EmailRepo
@@ -270,7 +271,7 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
 	}
 
-	tgMsgID, err := s.cfg.Notifier.SendNewEmail(ctx, e, classification)
+	tgMsgID, err := s.cfg.Notifier.SendNewEmail(ctx, e, classification, s.cfg.AccountName)
 	if err != nil {
 		return err
 	}
