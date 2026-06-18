@@ -12,9 +12,9 @@ import (
 	"github.com/paperspell/email-assistant/internal/domain"
 )
 
-func seedEmail(t *testing.T, r *EmailRepo, ctx context.Context, id string) {
+func seedEmail(t *testing.T, r *EmailRepo, id string) {
 	t.Helper()
-	require.NoError(t, r.Upsert(ctx, domain.Email{
+	require.NoError(t, r.Upsert(context.Background(), domain.Email{
 		ID:         id,
 		AccountID:  "acc1",
 		MessageUID: 1,
@@ -42,7 +42,7 @@ func TestAuditRepo_List_ReturnsNewestFirst(t *testing.T) {
 	ctx := context.Background()
 
 	// One email, two audit entries at different timestamps
-	seedEmail(t, emailRepo, ctx, "email-list")
+	seedEmail(t, emailRepo, "email-list")
 
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	for i := range 2 {
@@ -69,7 +69,7 @@ func TestAuditRepo_List_RespectsLimit(t *testing.T) {
 	r := NewAuditRepo(d)
 	ctx := context.Background()
 
-	seedEmail(t, emailRepo, ctx, "email-limit")
+	seedEmail(t, emailRepo, "email-limit")
 
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	for i := range 5 {
@@ -95,7 +95,7 @@ func TestAuditRepo_Save_RoundTrip(t *testing.T) {
 	auditRepo := NewAuditRepo(d)
 	ctx := context.Background()
 
-	seedEmail(t, emailRepo, ctx, "email-01")
+	seedEmail(t, emailRepo, "email-01")
 
 	entry := AuditEntry{
 		ID:          "audit-01",

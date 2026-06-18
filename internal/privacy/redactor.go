@@ -32,7 +32,10 @@ func initPatterns() {
 		// OTP / verification code in context.
 		{regexp.MustCompile(`(?i)(code|otp|token|pin|passcode)[^0-9]{0,10}(\d{4,8})`), "[TOKEN]"},
 		// Street address — apply before phone so leading digits aren't consumed first.
-		{regexp.MustCompile(`\b\d{1,5}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\s+(St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Lane|Ln|ul\.|al\.)\b`), "[ADDRESS]"},
+		{regexp.MustCompile(
+			`\b\d{1,5}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\s+` +
+				`(St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Lane|Ln|ul\.|al\.)\b`,
+		), "[ADDRESS]"},
 		// Phone — most general numeric pattern; apply last.
 		{regexp.MustCompile(`(\+?[\d][\d\s\-(). ]{6,14}[\d])`), "[PHONE]"},
 	}

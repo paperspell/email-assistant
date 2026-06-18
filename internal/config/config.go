@@ -58,28 +58,43 @@ type ContentConfig struct {
 	Mode string // "headers_only" | "redacted_body" | "full_body" — default "headers_only"
 }
 
+// DefaultValues returns the default display string for each setting that has one.
+// Values are derived from defaults() so they always match what the application uses.
+func DefaultValues() map[string]string {
+	d := defaults()
+	return map[string]string{
+		KeyLogLevel:                  d.LogLevel,
+		KeyAccountPort:               strconv.Itoa(d.Account.Port),
+		KeyAccountTLS:                strconv.FormatBool(d.Account.TLS),
+		KeyAccountPollInterval:       d.Account.PollInterval.String(),
+		KeyNotificationMinImportance: d.Notification.MinImportance,
+		KeyLLMScoreDivergenceWarn:    strconv.Itoa(d.LLM.ScoreDivergenceWarn),
+		KeyContentMode:               d.Content.Mode,
+	}
+}
+
 // KnownKeys is the set of all valid settings keys.
 var KnownKeys = map[string]bool{
-	"account.name":                true,
-	"account.email":               true,
-	"account.imap.host":           true,
-	"account.imap.port":           true,
-	"account.imap.username":       true,
-	"account.imap.password":       true,
-	"account.imap.tls":            true,
-	"account.poll_interval":       true,
-	"telegram.bot_token":          true,
-	"telegram.chat_id":            true,
-	"telegram.update_offset":      true,
-	"notification.min_importance": true,
-	"llm.provider":                true,
-	"llm.anthropic.api_key":       true,
-	"llm.openai.api_key":          true,
-	"llm.model":                   true,
-	"llm.score_divergence_warn":   true,
-	"content.mode":                true,
-	"log.level":                   true,
-	"dev_mode":                    true,
+	KeyAccountName:               true,
+	KeyAccountEmail:              true,
+	KeyAccountHost:               true,
+	KeyAccountPort:               true,
+	KeyAccountUsername:           true,
+	KeyAccountPassword:           true,
+	KeyAccountTLS:                true,
+	KeyAccountPollInterval:       true,
+	KeyTelegramBotToken:          true,
+	KeyTelegramChatID:            true,
+	KeyTelegramUpdateOffset:      true,
+	KeyNotificationMinImportance: true,
+	KeyLLMProvider:               true,
+	KeyLLMAnthropicAPIKey:        true,
+	KeyLLMOpenAIAPIKey:           true,
+	KeyLLMModel:                  true,
+	KeyLLMScoreDivergenceWarn:    true,
+	KeyContentMode:               true,
+	KeyLogLevel:                  true,
+	KeyDevMode:                   true,
 }
 
 // Load reads all settings from the database and returns a validated Config.
@@ -125,69 +140,69 @@ func defaults() *Config {
 }
 
 func applySettings(cfg *Config, s map[string]string) {
-	if v := s["log.level"]; v != "" {
+	if v := s[KeyLogLevel]; v != "" {
 		cfg.LogLevel = v
 	}
-	if v := s["dev_mode"]; v != "" {
+	if v := s[KeyDevMode]; v != "" {
 		cfg.DevMode = v == "true"
 	}
-	if v := s["account.name"]; v != "" {
+	if v := s[KeyAccountName]; v != "" {
 		cfg.Account.Name = v
 	}
-	if v := s["account.email"]; v != "" {
+	if v := s[KeyAccountEmail]; v != "" {
 		cfg.Account.Email = v
 	}
-	if v := s["account.imap.host"]; v != "" {
+	if v := s[KeyAccountHost]; v != "" {
 		cfg.Account.Host = v
 	}
-	if v := s["account.imap.port"]; v != "" {
+	if v := s[KeyAccountPort]; v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.Account.Port = p
 		}
 	}
-	if v := s["account.imap.username"]; v != "" {
+	if v := s[KeyAccountUsername]; v != "" {
 		cfg.Account.Username = v
 	}
-	if v := s["account.imap.password"]; v != "" {
+	if v := s[KeyAccountPassword]; v != "" {
 		cfg.Account.Password = v
 	}
-	if v := s["account.imap.tls"]; v != "" {
+	if v := s[KeyAccountTLS]; v != "" {
 		cfg.Account.TLS = v == "true"
 	}
-	if v := s["account.poll_interval"]; v != "" {
+	if v := s[KeyAccountPollInterval]; v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.Account.PollInterval = d
 		}
 	}
-	if v := s["telegram.bot_token"]; v != "" {
+	if v := s[KeyTelegramBotToken]; v != "" {
 		cfg.Telegram.BotToken = v
 	}
-	if v := s["telegram.chat_id"]; v != "" {
+	if v := s[KeyTelegramChatID]; v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.Telegram.ChatID = id
 		}
 	}
-	if v := s["notification.min_importance"]; v != "" {
+	if v := s[KeyNotificationMinImportance]; v != "" {
 		cfg.Notification.MinImportance = v
 	}
-	if v := s["llm.provider"]; v != "" {
+	if v := s[KeyLLMProvider]; v != "" {
 		cfg.LLM.Provider = v
 	}
-	if v := s["llm.anthropic.api_key"]; v != "" {
+	if v := s[KeyLLMAnthropicAPIKey]; v != "" {
 		cfg.LLM.AnthropicAPIKey = v
 	}
-	if v := s["llm.openai.api_key"]; v != "" {
+	if v := s[KeyLLMOpenAIAPIKey]; v != "" {
 		cfg.LLM.OpenAIAPIKey = v
 	}
-	if v := s["llm.model"]; v != "" {
+	if v := s[KeyLLMModel]; v != "" {
 		cfg.LLM.Model = v
 	}
-	if v := s["llm.score_divergence_warn"]; v != "" {
+	if v := s[KeyLLMScoreDivergenceWarn]; v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.LLM.ScoreDivergenceWarn = n
 		}
 	}
-	if v := s["content.mode"]; v != "" {
+	if v := s[KeyContentMode]; v != "" {
 		cfg.Content.Mode = v
 	}
 }
@@ -200,38 +215,38 @@ func applyEnvOverrides(cfg *Config) {
 
 func (c *Config) validate() error {
 	if c.Account.Host == "" {
-		return fmt.Errorf("config: account.imap.host is required")
+		return fmt.Errorf("config: %s is required", KeyAccountHost)
 	}
 	if c.Account.Username == "" {
-		return fmt.Errorf("config: account.imap.username is required")
+		return fmt.Errorf("config: %s is required", KeyAccountUsername)
 	}
 	if c.Account.Password == "" {
-		return fmt.Errorf("config: account.imap.password is required")
+		return fmt.Errorf("config: %s is required", KeyAccountPassword)
 	}
 	if c.Account.Port == 0 {
-		return fmt.Errorf("config: account.imap.port is required")
+		return fmt.Errorf("config: %s is required", KeyAccountPort)
 	}
 	if c.Account.PollInterval <= 0 {
-		return fmt.Errorf("config: account.poll_interval must be positive")
+		return fmt.Errorf("config: %s must be positive", KeyAccountPollInterval)
 	}
 	if c.Telegram.BotToken == "" {
-		return fmt.Errorf("config: telegram.bot_token is required")
+		return fmt.Errorf("config: %s is required", KeyTelegramBotToken)
 	}
 	if c.Telegram.ChatID == 0 {
-		return fmt.Errorf("config: telegram.chat_id is required")
+		return fmt.Errorf("config: %s is required", KeyTelegramChatID)
 	}
 	switch c.Content.Mode {
 	case "", "headers_only", "redacted_body", "full_body":
 		// valid
 	default:
-		return fmt.Errorf("config: unknown content.mode %q", c.Content.Mode)
+		return fmt.Errorf("config: unknown %s %q", KeyContentMode, c.Content.Mode)
 	}
 	// LLM config is optional; only validate when a provider is set
 	if c.LLM.Provider == "anthropic" && c.LLM.AnthropicAPIKey == "" {
-		return fmt.Errorf("config: llm.anthropic.api_key is required when provider is anthropic")
+		return fmt.Errorf("config: %s is required when provider is anthropic", KeyLLMAnthropicAPIKey)
 	}
 	if c.LLM.Provider == "openai" && c.LLM.OpenAIAPIKey == "" {
-		return fmt.Errorf("config: llm.openai.api_key is required when provider is openai")
+		return fmt.Errorf("config: %s is required when provider is openai", KeyLLMOpenAIAPIKey)
 	}
 	return nil
 }

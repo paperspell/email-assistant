@@ -111,9 +111,7 @@ func runFullInit(ctx context.Context, path string) error {
 	r := repo.NewSettingsRepo(sqlDB)
 
 	current, _ := r.GetAll(ctx) //nolint:errcheck
-	if current == nil {
-		current = map[string]string{}
-	}
+	applyDefaults(current)
 
 	if err := configureAccount(ctx, sc, r, current); err != nil {
 		return err
@@ -128,7 +126,7 @@ func runFullInit(ctx context.Context, path string) error {
 	}
 
 	// Persist defaults that are not prompted (LLM is never set during full init)
-	for k, v := range map[string]string{"log.level": "info", "dev_mode": "false"} {
+	for k, v := range map[string]string{config.KeyLogLevel: "info", config.KeyDevMode: "false"} {
 		if current[k] == "" {
 			if err := r.Set(ctx, k, v); err != nil {
 				return fmt.Errorf("save %s: %w", k, err)
@@ -186,6 +184,7 @@ func runSectionInit(ctx context.Context, path string, fn sectionFn) error {
 	if err != nil {
 		return fmt.Errorf("load current settings: %w", err)
 	}
+	applyDefaults(current)
 
 	sc := bufio.NewScanner(os.Stdin)
 	if err := fn(ctx, sc, r, current); err != nil {
@@ -203,29 +202,32 @@ func configureAccount(
 ) error {
 	fmt.Println("IMAP Account")
 
-	name := promptText(sc, "  Name", current["account.name"])
-	email := promptText(sc, "  Email", current["account.email"])
-	host := promptText(sc, "  Host", current["account.imap.host"])
-	port := promptText(sc, "  Port", orDefault(current["account.imap.port"], "993"))
-	username := promptText(sc, "  Username", orDefault(current["account.imap.username"], email))
+	name := promptText(sc, "  Name", current[config.KeyAccountName])
+	email := promptText(sc, "  Email", current[config.KeyAccountEmail])
+	host := promptText(sc, "  Host", current[config.KeyAccountHost])
+	port := promptText(sc, "  Port", current[config.KeyAccountPort])
+	if current[config.KeyAccountUsername] == "" {
+		current[config.KeyAccountUsername] = email
+	}
+	username := promptText(sc, "  Username", current[config.KeyAccountUsername])
 	password, err := promptPassword("  Password (Enter to keep unchanged)", sc)
 	if err != nil {
 		return fmt.Errorf("read password: %w", err)
 	}
-	tlsVal := promptText(sc, "  TLS", orDefault(current["account.imap.tls"], "true"))
-	pollInterval := promptText(sc, "  Poll interval", orDefault(current["account.poll_interval"], "1m"))
+	tlsVal := promptText(sc, "  TLS", current[config.KeyAccountTLS])
+	pollInterval := promptText(sc, "  Poll interval", current[config.KeyAccountPollInterval])
 
 	settings := map[string]string{
-		"account.name":          name,
-		"account.email":         email,
-		"account.imap.host":     host,
-		"account.imap.port":     port,
-		"account.imap.username": username,
-		"account.imap.tls":      tlsVal,
-		"account.poll_interval": pollInterval,
+		config.KeyAccountName:         name,
+		config.KeyAccountEmail:        email,
+		config.KeyAccountHost:         host,
+		config.KeyAccountPort:         port,
+		config.KeyAccountUsername:     username,
+		config.KeyAccountTLS:          tlsVal,
+		config.KeyAccountPollInterval: pollInterval,
 	}
 	if password != "" {
-		settings["account.imap.password"] = password
+		settings[config.KeyAccountPassword] = password
 	}
 	return saveSettings(ctx, r, settings)
 }
@@ -239,13 +241,13 @@ func configureTelegram(
 	if err != nil {
 		return fmt.Errorf("read bot token: %w", err)
 	}
-	chatID := promptText(sc, "  Chat ID", current["telegram.chat_id"])
+	chatID := promptText(sc, "  Chat ID", current[config.KeyTelegramChatID])
 
 	settings := map[string]string{
-		"telegram.chat_id": chatID,
+		config.KeyTelegramChatID: chatID,
 	}
 	if botToken != "" {
-		settings["telegram.bot_token"] = botToken
+		settings[config.KeyTelegramBotToken] = botToken
 	}
 	return saveSettings(ctx, r, settings)
 }
@@ -258,10 +260,10 @@ func configureNotifications(
 	minImportance := promptText(
 		sc,
 		"  Min importance (critical/important/maybe)",
-		orDefault(current["notification.min_importance"], "important"),
+		current[config.KeyNotificationMinImportance],
 	)
 	return saveSettings(ctx, r, map[string]string{
-		"notification.min_importance": minImportance,
+		config.KeyNotificationMinImportance: minImportance,
 	})
 }
 
@@ -271,10 +273,10 @@ func configureLLM(
 	fmt.Println("LLM Classification")
 	fmt.Println("  (press Enter at provider prompt to disable LLM)")
 
-	provider := promptText(sc, "  Provider (anthropic/openai)", current["llm.provider"])
+	provider := promptText(sc, "  Provider (anthropic/openai)", current[config.KeyLLMProvider])
 	provider = strings.ToLower(strings.TrimSpace(provider))
 
-	settings := map[string]string{"llm.provider": provider}
+	settings := map[string]string{config.KeyLLMProvider: provider}
 
 	if provider == "" {
 		fmt.Println("  LLM disabled.")
@@ -288,7 +290,7 @@ func configureLLM(
 			return fmt.Errorf("read api key: %w", err)
 		}
 		if apiKey != "" {
-			settings["llm.anthropic.api_key"] = apiKey
+			settings[config.KeyLLMAnthropicAPIKey] = apiKey
 		}
 	case "openai":
 		apiKey, err := promptPassword("  OpenAI API key (Enter to keep unchanged)", sc)
@@ -296,15 +298,15 @@ func configureLLM(
 			return fmt.Errorf("read api key: %w", err)
 		}
 		if apiKey != "" {
-			settings["llm.openai.api_key"] = apiKey
+			settings[config.KeyLLMOpenAIAPIKey] = apiKey
 		}
 	default:
 		return fmt.Errorf("unknown provider %q (valid: anthropic, openai)", provider)
 	}
 
-	model := promptText(sc, "  Model override (Enter for default)", current["llm.model"])
+	model := promptText(sc, "  Model override (Enter for default)", current[config.KeyLLMModel])
 	if model != "" {
-		settings["llm.model"] = model
+		settings[config.KeyLLMModel] = model
 	}
 
 	fmt.Println("  Body access:")
@@ -314,9 +316,9 @@ func configureLLM(
 	contentMode := promptText(
 		sc,
 		"  Body access (headers_only/redacted_body/full_body)",
-		orDefault(current["content.mode"], "headers_only"),
+		current[config.KeyContentMode],
 	)
-	settings["content.mode"] = contentMode
+	settings[config.KeyContentMode] = contentMode
 
 	return saveSettings(ctx, r, settings)
 }
@@ -332,12 +334,16 @@ func saveSettings(ctx context.Context, r *repo.SettingsRepo, settings map[string
 	return nil
 }
 
-// orDefault returns a if non-empty, otherwise b.
-func orDefault(a, b string) string {
-	if a != "" {
-		return a
+// applyDefaults fills in any missing keys in current with their application defaults.
+func applyDefaults(current map[string]string) {
+	if current == nil {
+		return
 	}
-	return b
+	for k, v := range config.DefaultValues() {
+		if current[k] == "" {
+			current[k] = v
+		}
+	}
 }
 
 func promptText(sc *bufio.Scanner, label, defaultVal string) string {

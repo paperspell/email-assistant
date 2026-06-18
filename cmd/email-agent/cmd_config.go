@@ -86,6 +86,8 @@ func runConfigList(ctx context.Context, path string) error {
 		return err
 	}
 
+	defaults := config.DefaultValues()
+
 	keys := make([]string, 0, len(config.KnownKeys))
 	for k := range config.KnownKeys {
 		keys = append(keys, k)
@@ -96,15 +98,19 @@ func runConfigList(ctx context.Context, path string) error {
 	fmt.Printf("%-35s  %s\n", strings.Repeat("-", 35), strings.Repeat("-", 30))
 	for _, k := range keys {
 		v := values[k]
-		fmt.Printf("%-35s  %s\n", k, maskValue(k, v))
+		fmt.Printf("%-35s  %s\n", k, maskValue(k, v, defaults[k]))
 	}
 	return nil
 }
 
 // maskValue returns the display string for a setting value.
 // Sensitive keys (password, token, api_key) show only the last 4 characters.
-func maskValue(key, value string) string {
+// Unset keys fall back to def if non-empty, otherwise "(not set)".
+func maskValue(key, value, def string) string {
 	if value == "" {
+		if def != "" {
+			return def
+		}
 		return "(not set)"
 	}
 	if isSensitiveKey(key) {
