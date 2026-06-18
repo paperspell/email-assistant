@@ -25,9 +25,12 @@ const maxBodyLen = 3000
 // extraHeaders lists the additional header fields fetched alongside ENVELOPE.
 var extraHeaders = []string{"In-Reply-To", "List-Unsubscribe", "Precedence"}
 
+// Peek avoids setting the \Seen flag; a BODY[HEADER.FIELDS] fetch without it
+// implicitly marks the message as read (RFC 3501 §6.4.5).
 var extraHeaderSection = &imaplib.FetchItemBodySection{
 	Specifier:    imaplib.PartSpecifierHeader,
 	HeaderFields: extraHeaders,
+	Peek:         true,
 }
 
 // peekBodySection fetches the plain-text body without setting the \Seen flag.
