@@ -27,11 +27,14 @@ func TestFormatMessage_WithName(t *testing.T) {
 		Date:      time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC),
 	}
 	msg := formatMessage(e, testClassification)
-	assert.Contains(t, msg, "Alice Smith <alice@example.com>")
+	// Angle brackets around the address are HTML-escaped for Telegram's parser.
+	assert.Contains(t, msg, "Alice Smith &lt;alice@example.com&gt;")
 	assert.Contains(t, msg, "Project update")
 	assert.Contains(t, msg, "New email")
 	assert.Contains(t, msg, "important")
 	assert.Contains(t, msg, "75")
+	// Importance is emphasised in bold with an icon for the level.
+	assert.Contains(t, msg, "<b>🟠 Importance: important (score 75)</b>")
 }
 
 func TestFormatMessage_WithoutName(t *testing.T) {
@@ -42,7 +45,8 @@ func TestFormatMessage_WithoutName(t *testing.T) {
 	}
 	msg := formatMessage(e, testClassification)
 	assert.Contains(t, msg, "bob@example.com")
-	assert.NotContains(t, msg, "<")
+	// A bare address is not wrapped in angle brackets (escaped or otherwise).
+	assert.NotContains(t, msg, "&lt;")
 }
 
 func TestFormatMessage_EmptySubject(t *testing.T) {

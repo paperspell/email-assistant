@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -37,6 +38,7 @@ func (b *Bot) SendNewEmail(_ context.Context, e domain.Email, c domain.Classific
 	}
 	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c), &gotgbot.SendMessageOpts{
 		ReplyMarkup: keyboard,
+		ParseMode:   "HTML",
 	})
 	if err != nil {
 		return 0, fmt.Errorf("telegram send message: %w", err)
@@ -83,14 +85,32 @@ func formatMessage(e domain.Email, c domain.Classification) string {
 	}
 	date := e.Date.UTC().Format("02 Jan 2006 15:04 UTC")
 
+	// Message is sent with HTML parse mode, so dynamic content must be escaped.
 	body := fmt.Sprintf(
-		"📧 New email\n\nFrom: %s\nSubject: %s\nDate: %s\n\nImportance: %s (score %d)",
-		from, e.Subject, date, string(c.Level), c.Score,
+		"📧 New email\n\nFrom: %s\nSubject: %s\nDate: %s\n\n<b>%s Importance: %s (score %d)</b>",
+		html.EscapeString(from), html.EscapeString(e.Subject), date,
+		importanceIcon(c.Level), html.EscapeString(string(c.Level)), c.Score,
 	)
 	if c.Summary != "" {
-		body += "\nSummary: " + c.Summary
+		body += "\nSummary: " + html.EscapeString(c.Summary)
 	} else {
-		body += "\nWhy: " + strings.Join(c.Reason, "; ")
+		body += "\nWhy: " + html.EscapeString(strings.Join(c.Reason, "; "))
 	}
 	return body
+}
+
+// importanceIcon returns an emoji that conveys the importance level at a glance.
+func importanceIcon(level domain.ImportanceLevel) string {
+	switch level {
+	case domain.LevelCritical:
+		return "🔴"
+	case domain.LevelImportant:
+		return "🟠"
+	case domain.LevelMaybe:
+		return "🟡"
+	case domain.LevelIgnore:
+		return "⚪"
+	default:
+		return "⚫"
+	}
 }
