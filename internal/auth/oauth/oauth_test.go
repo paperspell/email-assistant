@@ -90,6 +90,16 @@ func TestGoogleConfig(t *testing.T) {
 	assert.Equal(t, "https://oauth2.googleapis.com/token", cfg.Endpoint.TokenURL)
 }
 
+func TestRandomState_UniqueAndNonEmpty(t *testing.T) {
+	a, err := randomState()
+	require.NoError(t, err)
+	b, err := randomState()
+	require.NoError(t, err)
+	assert.NotEmpty(t, a)
+	assert.Len(t, a, 32, "16 random bytes hex-encoded")
+	assert.NotEqual(t, a, b, "state must differ between calls")
+}
+
 func TestIsReauthRequired(t *testing.T) {
 	assert.True(t, IsReauthRequired(&oauth2.RetrieveError{ErrorCode: "invalid_grant"}))
 	assert.False(t, IsReauthRequired(&oauth2.RetrieveError{ErrorCode: "temporarily_unavailable"}))
