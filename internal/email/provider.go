@@ -26,6 +26,14 @@ type Provider interface {
 	Connect(ctx context.Context) error
 	// FetchSince returns messages with UID strictly greater than lastUID.
 	FetchSince(ctx context.Context, lastUID uint32) ([]Message, error)
+	// MarkRead marks the message with the given UID as read (seen) in the
+	// mailbox. It is best-effort with respect to connection state: callers
+	// should treat an error as non-fatal.
+	MarkRead(ctx context.Context, uid uint32) error
+	// FetchBody returns the plain-text body of the message with the given UID,
+	// fetched on demand without changing its read state. Returns an empty string
+	// when the message has no text body.
+	FetchBody(ctx context.Context, uid uint32) (string, error)
 	// Close closes the underlying connection.
 	Close() error
 }

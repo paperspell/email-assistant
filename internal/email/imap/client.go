@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/textproto"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -56,6 +57,10 @@ type Config struct {
 type Client struct {
 	cfg    Config
 	client *imapclient.Client
+	// mu serializes IMAP commands over the single connection, which is shared
+	// between the polling goroutine (FetchSince) and on-demand mailbox actions
+	// (MarkRead, FetchBody) triggered from Telegram callbacks.
+	mu sync.Mutex
 }
 
 // NewClient creates an IMAP Client. Call Connect before using.
@@ -105,6 +110,9 @@ func (c *Client) Connect(_ context.Context) error {
 // a Zoho server bug where combining BODY[HEADER.FIELDS] and BODY[TEXT] in a
 // single FETCH produces a malformed section-spec in the response.
 func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.client == nil {
 		return nil, fmt.Errorf("imap: not connected")
 	}
@@ -166,6 +174,7 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 
 // fetchBodies fetches plain-text body for each UID using BODY.PEEK[TEXT].
 // Returns a map of UID → stripped, truncated body text.
+// Must be called with c.mu held (it is invoked from FetchSince).
 func (c *Client) fetchBodies(uidSet imaplib.UIDSet) (map[uint32]string, error) {
 	c.cfg.Logger.Debug("imap body fetch starting")
 	msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
@@ -188,6 +197,56 @@ func (c *Client) fetchBodies(uidSet imaplib.UIDSet) (map[uint32]string, error) {
 	}
 	c.cfg.Logger.Debug("imap body fetch complete", "fetched", len(bodies))
 	return bodies, nil
+}
+
+// MarkRead sets the \Seen flag on the message with the given UID.
+func (c *Client) MarkRead(_ context.Context, uid uint32) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.client == nil {
+		return fmt.Errorf("imap: not connected")
+	}
+
+	set := imaplib.UIDSetNum(imaplib.UID(uid))
+	cmd := c.client.Store(set, &imaplib.StoreFlags{
+		Op:     imaplib.StoreFlagsAdd,
+		Silent: true, // we don't need the updated flags echoed back
+		Flags:  []imaplib.Flag{imaplib.FlagSeen},
+	}, nil) // a UIDSet makes this a UID STORE
+	if err := cmd.Close(); err != nil {
+		return fmt.Errorf("imap mark read uid %d: %w", uid, err)
+	}
+	c.cfg.Logger.Debug("imap marked read", "uid", uid)
+	return nil
+}
+
+// FetchBody returns the plain-text body of the message with the given UID,
+// fetched on demand with BODY.PEEK[TEXT] so the read state is not changed.
+// Returns an empty string when the message has no text body.
+func (c *Client) FetchBody(_ context.Context, uid uint32) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.client == nil {
+		return "", fmt.Errorf("imap: not connected")
+	}
+
+	set := imaplib.UIDSetNum(imaplib.UID(uid))
+	msgs, err := c.client.Fetch(set, &imaplib.FetchOptions{
+		UID:         true,
+		BodySection: []*imaplib.FetchItemBodySection{peekBodySection},
+	}).Collect()
+	if err != nil {
+		return "", fmt.Errorf("imap fetch body uid %d: %w", uid, err)
+	}
+
+	for _, m := range msgs {
+		if bodyBytes := m.FindBodySection(peekBodySection); len(bodyBytes) > 0 {
+			return truncate(stripHTML(string(bodyBytes)), maxBodyLen), nil
+		}
+	}
+	return "", nil
 }
 
 // Close logs out and closes the IMAP connection.

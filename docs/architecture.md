@@ -157,10 +157,11 @@ Responsibilities:
 
 Responsibilities:
 
-- Define email provider interface
+- Define email provider interface (`Connect`, `FetchSince`, `MarkRead`, `FetchBody`, `Close`)
 - Fetch messages
 - Fetch metadata
 - Fetch body when needed
+- Mark messages read on user triage
 - Send or draft replies in later stages
 
 ---
@@ -176,7 +177,9 @@ Responsibilities:
 - List folders
 - Poll inbox
 - Fetch metadata and body
+- Mark messages read (`UID STORE +FLAGS \Seen`) on demand
 - Track message UIDs
+- Serialize commands over the shared connection (mutex)
 
 ---
 

@@ -1,6 +1,6 @@
 # 007-02-mailbox-actions.md
 
-Status: Draft
+Status: Implemented
 Version: 0.1
 
 # Stage 007-02 — Mailbox Actions from Telegram

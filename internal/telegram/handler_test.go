@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -44,6 +45,33 @@ func (m *mockBotClient) SendFollowUp(_ context.Context, text string) error {
 	defer m.mu.Unlock()
 	m.followUps = append(m.followUps, text)
 	return nil
+}
+
+// --- fake Mailbox ---
+
+type fakeMailbox struct {
+	mu         sync.Mutex
+	markedUIDs []uint32
+	markErr    error
+	body       string
+	bodyErr    error
+}
+
+func (f *fakeMailbox) MarkRead(_ context.Context, uid uint32) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.markErr != nil {
+		return f.markErr
+	}
+	f.markedUIDs = append(f.markedUIDs, uid)
+	return nil
+}
+
+func (f *fakeMailbox) FetchBody(_ context.Context, _ uint32) (string, error) {
+	if f.bodyErr != nil {
+		return "", f.bodyErr
+	}
+	return f.body, nil
 }
 
 // --- helpers ---
@@ -273,4 +301,69 @@ func TestHandler_UnknownAction_IsIgnored(t *testing.T) {
 	assert.Contains(t, mockBot.answered, "cq-01")
 	assert.Empty(t, mockBot.removedKeys)
 	assert.Empty(t, mockBot.followUps)
+}
+
+// --- mailbox action tests (Stage 007-02) ---
+
+func TestHandler_Handled_MarksRead(t *testing.T) {
+	h, emailRepo, _, _, _ := newTestHandler(t)
+	fm := &fakeMailbox{}
+	h.Mailboxes = map[string]Mailbox{"acc": fm}
+
+	e := insertTestEmail(t, emailRepo, "email-01", "boss@work.com") // AccountID "acc", UID 1
+	require.NoError(t, h.Handle(context.Background(), makeUpdate("cq-01", "handled:"+e.ID, 100)))
+
+	assert.Equal(t, []uint32{e.MessageUID}, fm.markedUIDs)
+}
+
+func TestHandler_Ignore_MarksRead(t *testing.T) {
+	h, emailRepo, _, _, _ := newTestHandler(t)
+	fm := &fakeMailbox{}
+	h.Mailboxes = map[string]Mailbox{"acc": fm}
+
+	e := insertTestEmail(t, emailRepo, "email-01", "spam@x.com")
+	require.NoError(t, h.Handle(context.Background(), makeUpdate("cq-01", "ignore:"+e.ID, 100)))
+
+	assert.Equal(t, []uint32{e.MessageUID}, fm.markedUIDs)
+}
+
+func TestHandler_MarkReadError_DoesNotFailCallback(t *testing.T) {
+	h, emailRepo, _, _, mockBot := newTestHandler(t)
+	h.Mailboxes = map[string]Mailbox{"acc": &fakeMailbox{markErr: errors.New("imap down")}}
+	ctx := context.Background()
+
+	e := insertTestEmail(t, emailRepo, "email-01", "boss@work.com")
+	require.NoError(t, h.Handle(ctx, makeUpdate("cq-01", "handled:"+e.ID, 100)))
+
+	got, err := emailRepo.GetByID(ctx, e.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusHandled, got.Status, "status still updated despite mark-read failure")
+	assert.Contains(t, mockBot.removedKeys, int64(100), "keyboard still removed")
+}
+
+func TestHandler_Details_IncludesBody(t *testing.T) {
+	h, emailRepo, _, classRepo, mockBot := newTestHandler(t)
+	h.Mailboxes = map[string]Mailbox{"acc": &fakeMailbox{body: "Hello, this is the email body."}}
+	ctx := context.Background()
+
+	e := insertTestEmail(t, emailRepo, "email-01", "boss@work.com")
+	insertTestClassification(t, classRepo, e.ID)
+	require.NoError(t, h.Handle(ctx, makeUpdate("cq-01", "details:"+e.ID, 100)))
+
+	require.Len(t, mockBot.followUps, 1)
+	assert.Contains(t, mockBot.followUps[0], "Hello, this is the email body.")
+	assert.NotContains(t, mockBot.followUps[0], "(body unavailable)")
+}
+
+func TestHandler_Details_BodyUnavailable(t *testing.T) {
+	h, emailRepo, _, classRepo, mockBot := newTestHandler(t)
+	// No mailbox registered for the account.
+	ctx := context.Background()
+
+	e := insertTestEmail(t, emailRepo, "email-01", "boss@work.com")
+	insertTestClassification(t, classRepo, e.ID)
+	require.NoError(t, h.Handle(ctx, makeUpdate("cq-01", "details:"+e.ID, 100)))
+
+	require.Len(t, mockBot.followUps, 1)
+	assert.Contains(t, mockBot.followUps[0], "(body unavailable)")
 }

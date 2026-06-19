@@ -140,11 +140,16 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 
 	g, gCtx := errgroup.WithContext(ctx)
 
+	// Per-account providers are kept so the Telegram handler can act on the
+	// mailbox (mark read, fetch body) through the same provider the scheduler uses.
+	mailboxes := make(map[string]telegram.Mailbox, len(cfg.Accounts))
+
 	for _, acc := range cfg.Accounts {
 		provider, err := newProvider(acc, fetchBody, logger)
 		if err != nil {
 			return err
 		}
+		mailboxes[acc.ID] = provider
 		sched := scheduler.New(scheduler.Config{
 			AccountID:           acc.ID,
 			AccountName:         acc.Name,
@@ -171,6 +176,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		EmailRepo:          emailRepo,
 		SenderRepo:         senderRepo,
 		ClassificationRepo: classificationRepo,
+		Mailboxes:          mailboxes,
 		Logger:             logger.With("component", "telegram_handler"),
 	}
 

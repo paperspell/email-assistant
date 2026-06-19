@@ -26,12 +26,21 @@ type BotClient interface {
 	SendFollowUp(ctx context.Context, text string) error
 }
 
+// Mailbox is the subset of email.Provider the Handler needs to act on a mailbox.
+// It is satisfied structurally by the per-account providers, so the handler
+// reaches the mailbox only through the provider abstraction, never IMAP directly.
+type Mailbox interface {
+	MarkRead(ctx context.Context, uid uint32) error
+	FetchBody(ctx context.Context, uid uint32) (string, error)
+}
+
 // Handler processes incoming Telegram callback queries and dispatches actions.
 type Handler struct {
 	Bot                BotClient
 	EmailRepo          *repo.EmailRepo
 	SenderRepo         *repo.SenderRepo
 	ClassificationRepo *repo.ClassificationRepo
+	Mailboxes          map[string]Mailbox // keyed by account ID
 	Logger             log.Logger
 }
 
@@ -83,6 +92,7 @@ func (h *Handler) handleHandled(ctx context.Context, msgID int64, e *domain.Emai
 	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusHandled); err != nil {
 		return err
 	}
+	h.markRead(ctx, e)
 	h.Logger.Info("email marked handled", "email_id", e.ID, "from", e.FromEmail)
 	return h.Bot.RemoveKeyboard(msgID)
 }
@@ -94,8 +104,21 @@ func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email
 	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored); err != nil {
 		return err
 	}
+	h.markRead(ctx, e)
 	h.Logger.Info("email marked ignored via feedback", "email_id", e.ID, "from", e.FromEmail)
 	return h.Bot.RemoveKeyboard(msgID)
+}
+
+// markRead flags the email as read in the mailbox. Best-effort: a missing
+// provider or a connection error is logged and never fails the button.
+func (h *Handler) markRead(ctx context.Context, e *domain.Email) {
+	mb, ok := h.Mailboxes[e.AccountID]
+	if !ok {
+		return
+	}
+	if err := mb.MarkRead(ctx, e.MessageUID); err != nil {
+		h.Logger.Error(err, "email_id", e.ID, "account_id", e.AccountID, "uid", e.MessageUID)
+	}
 }
 
 func (h *Handler) handleDetails(ctx context.Context, e *domain.Email) error {
@@ -103,8 +126,24 @@ func (h *Handler) handleDetails(ctx context.Context, e *domain.Email) error {
 	if err != nil {
 		return err
 	}
-	text := formatDetails(e, all)
+	body := h.fetchBody(ctx, e)
+	text := formatDetails(e, all, body)
 	return h.Bot.SendFollowUp(ctx, text)
+}
+
+// fetchBody retrieves the email body on demand. Best-effort: a missing provider
+// or fetch error returns "" so Details still shows the metadata/classification.
+func (h *Handler) fetchBody(ctx context.Context, e *domain.Email) string {
+	mb, ok := h.Mailboxes[e.AccountID]
+	if !ok {
+		return ""
+	}
+	body, err := mb.FetchBody(ctx, e.MessageUID)
+	if err != nil {
+		h.Logger.Error(err, "email_id", e.ID, "account_id", e.AccountID, "uid", e.MessageUID)
+		return ""
+	}
+	return body
 }
 
 func (h *Handler) adjustSenderScore(ctx context.Context, emailAddr string, delta int) error {
@@ -139,7 +178,7 @@ func parseCallbackData(data string) (action, emailID string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-func formatDetails(e *domain.Email, all []domain.Classification) string {
+func formatDetails(e *domain.Email, all []domain.Classification, body string) string {
 	from := e.FromEmail
 	if e.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
@@ -148,6 +187,14 @@ func formatDetails(e *domain.Email, all []domain.Classification) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "ℹ Email details\n\nFrom: %s\nSubject: %s\nDate: %s\n", from, e.Subject, date)
+
+	// Body (fetched on demand). Empty when the provider is unavailable or the
+	// message has no text part.
+	if body != "" {
+		fmt.Fprintf(&b, "\n%s\n", body)
+	} else {
+		fmt.Fprint(&b, "\n(body unavailable)\n")
+	}
 
 	// Separate LLM and rule-based results
 	var llmClass, ruleClass *domain.Classification

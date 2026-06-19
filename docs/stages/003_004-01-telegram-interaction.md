@@ -57,11 +57,17 @@ This works in **private chats and channels** alike — no need to reply to messa
 
 | Button | Callback data | Action |
 |--------|--------------|--------|
-| ✓ Handled | `handled:{emailID}` | Mark email handled; sender score +25 |
-| ✗ Ignore  | `ignore:{emailID}`  | Mark email ignored; sender score −25 |
-| ℹ Details | `details:{emailID}` | Bot sends a follow-up message with full classification breakdown |
+| ✓ Handled | `handled:{emailID}` | Mark email handled; sender score +25; mark message read in the mailbox |
+| ✗ Ignore  | `ignore:{emailID}`  | Mark email ignored; sender score −25; mark message read in the mailbox |
+| ℹ Details | `details:{emailID}` | Bot sends a follow-up with the email body (fetched on demand) + classification breakdown |
 
 The email ID is embedded directly in the callback data — no message ID lookup needed.
+
+> Mailbox side-effects (marking read, fetching the body) were added in Stage
+> 007-02 (`docs/stages/007-02-mailbox-actions.md`). They go through the
+> `email.Provider` abstraction and are best-effort: a connection failure is
+> logged and never breaks the button. Background polling still does **not** mark
+> mail read. The body is fetched live and not stored.
 
 After `handled` or `ignore`, the keyboard is replaced with a single confirmation line:
 
