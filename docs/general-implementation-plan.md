@@ -248,6 +248,10 @@ Features:
 
 Detailed plan: `docs/stages/007-01-multi-account.md`.
 
+Follow-up: `docs/stages/007-02-mailbox-actions.md` — Telegram buttons act on the
+mailbox through the `Provider` abstraction: Handled/Ignore mark the email read,
+and Details fetches and shows the body on demand (no body persisted).
+
 OAuth readiness: this stage ships password auth only, but stores an `auth_type`
 discriminator and routes provider construction through a factory, so a later
 Gmail/Microsoft Graph OAuth backend slots in without a schema change or wiring
