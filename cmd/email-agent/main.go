@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/paperspell/email-assistant/internal/auth/keychain"
+	"github.com/paperspell/email-assistant/internal/auth/oauth"
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
@@ -145,7 +146,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	mailboxes := make(map[string]telegram.Mailbox, len(cfg.Accounts))
 
 	for _, acc := range cfg.Accounts {
-		provider, err := newProvider(acc, fetchBody, logger)
+		provider, err := newProvider(gCtx, acc, cfg.OAuth, fetchBody, accountRepo, logger)
 		if err != nil {
 			return err
 		}
@@ -194,10 +195,17 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	return nil
 }
 
-// newProvider builds the email provider for an account based on its auth type.
-// Only password IMAP is supported today; the switch is the seam where an OAuth
-// (Gmail/Graph) backend slots in without changing the daemon wiring.
-func newProvider(acc domain.Account, fetchBody bool, logger log.Logger) (email.Provider, error) {
+// newProvider builds the email provider for an account based on its auth type:
+// a password IMAP client, or an OAuth (XOAUTH2) IMAP client whose token source
+// refreshes and persists tokens back through accountRepo.
+func newProvider(
+	ctx context.Context,
+	acc domain.Account,
+	oauthCfg config.OAuthConfig,
+	fetchBody bool,
+	accountRepo *repo.AccountRepo,
+	logger log.Logger,
+) (email.Provider, error) {
 	switch acc.AuthType {
 	case "", domain.AuthPassword:
 		return imapmail.NewClient(imapmail.Config{
@@ -208,6 +216,25 @@ func newProvider(acc domain.Account, fetchBody bool, logger log.Logger) (email.P
 			TLS:       acc.TLS,
 			FetchBody: fetchBody,
 			Logger:    logger.With("component", "imap", "account", acc.Email),
+		}), nil
+	case domain.AuthOAuth:
+		oc := oauth.GoogleConfig(oauthCfg.GoogleClientID, oauthCfg.GoogleClientSecret)
+		accID := acc.ID
+		ts := oauth.TokenSource(ctx, oc, oauth.Tokens{
+			AccessToken:  acc.OAuthAccessToken,
+			RefreshToken: acc.OAuthRefreshToken,
+			Expiry:       acc.OAuthTokenExpiry,
+		}, func(t oauth.Tokens) error {
+			return accountRepo.UpdateTokens(ctx, accID, t.AccessToken, t.RefreshToken, t.Expiry)
+		})
+		return imapmail.NewClient(imapmail.Config{
+			Host:        acc.Host,
+			Port:        acc.Port,
+			Username:    acc.Username,
+			TokenSource: ts,
+			TLS:         acc.TLS,
+			FetchBody:   fetchBody,
+			Logger:      logger.With("component", "imap", "account", acc.Email),
 		}), nil
 	default:
 		return nil, fmt.Errorf("account %q: unsupported auth_type %q", acc.Email, acc.AuthType)

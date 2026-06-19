@@ -2,9 +2,13 @@ package domain
 
 import "time"
 
-// AuthPassword is the default authentication method: a static IMAP password.
-// Future backends (Gmail, Microsoft Graph) will add "oauth".
-const AuthPassword = "password"
+// Authentication methods for an account.
+const (
+	// AuthPassword is the default: a static IMAP password.
+	AuthPassword = "password"
+	// AuthOAuth uses OAuth tokens (Gmail/Graph) instead of a password.
+	AuthOAuth = "oauth"
+)
 
 // Account represents a configured email account.
 type Account struct {
@@ -17,6 +21,12 @@ type Account struct {
 	Password     string
 	TLS          bool
 	PollInterval time.Duration
-	AuthType     string // "password" for now; "oauth" reserved for Gmail/Graph
+	AuthType     string // "password" or "oauth"
 	Enabled      bool
+
+	// OAuth credentials, populated when AuthType == AuthOAuth. The refresh token
+	// is the durable secret; the access token and expiry are a refreshable cache.
+	OAuthRefreshToken string
+	OAuthAccessToken  string
+	OAuthTokenExpiry  time.Time
 }

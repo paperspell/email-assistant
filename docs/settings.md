@@ -50,10 +50,30 @@ Each account has these fields (prompted by `account add`/`edit`):
 | Password | string | — | IMAP password — stored in the encrypted database |
 | TLS | `true` `false` | `true` | Whether to use TLS; disable only for local/test servers |
 | Poll interval | duration | `1m` | How often to poll for new messages (e.g. `30s`, `1m`, `5m`) |
-| Auth type | `password` | `password` | Authentication method (`oauth` reserved for future Gmail/Graph support) |
+| Auth type | `password` `oauth` | `password` | `password` = static IMAP password; `oauth` = Google OAuth (Gmail) |
 | Enabled | `true` `false` | `true` | Disabled accounts are skipped by the daemon |
 
 `email-agent init` configures the first account; use `account add` for more.
+
+### Gmail via OAuth
+
+For an `oauth` account, you do **not** enter a password. Instead:
+
+1. Configure the global Google client once: `email-agent init oauth` (stores the
+   keys below). See `docs/stages/rollout/008-01-gmail-oauth-setup.md` for the
+   Google Cloud Console steps.
+2. `email-agent account add` → choose auth type `oauth`. The CLI opens a browser
+   for consent and stores a refresh token on the account (host/port default to
+   `imap.gmail.com` / `993`).
+
+The daemon then logs in over IMAP with XOAUTH2 and refreshes the access token
+automatically. If the refresh token is revoked or expires, re-run
+`email-agent account add` (or `account edit <email>`) to re-authorize.
+
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `oauth.google.client_id` | string | — | Google OAuth Desktop-app client ID (shared by all Gmail accounts) |
+| `oauth.google.client_secret` | string | — | Google OAuth client secret — stored encrypted, masked in `config list` |
 
 ---
 

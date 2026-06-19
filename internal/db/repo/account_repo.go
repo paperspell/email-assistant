@@ -21,7 +21,8 @@ func NewAccountRepo(db *sql.DB) *AccountRepo {
 }
 
 const accountColumns = `id, name, email, imap_host, imap_port, imap_username,
-	imap_password, tls, poll_interval, auth_type, enabled`
+	imap_password, tls, poll_interval, auth_type, enabled,
+	oauth_refresh_token, oauth_access_token, oauth_token_expiry`
 
 // List returns all accounts ordered by creation time.
 func (r *AccountRepo) List(ctx context.Context) ([]domain.Account, error) {
@@ -56,8 +57,9 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 	const q = `
 		INSERT INTO accounts
 			(id, name, email, imap_host, imap_port, imap_username,
-			 imap_password, tls, poll_interval, auth_type, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 imap_password, tls, poll_interval, auth_type, enabled,
+			 oauth_refresh_token, oauth_access_token, oauth_token_expiry)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name          = excluded.name,
 			email         = excluded.email,
@@ -68,14 +70,34 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 			tls           = excluded.tls,
 			poll_interval = excluded.poll_interval,
 			auth_type     = excluded.auth_type,
-			enabled       = excluded.enabled
+			enabled       = excluded.enabled,
+			oauth_refresh_token = excluded.oauth_refresh_token,
+			oauth_access_token  = excluded.oauth_access_token,
+			oauth_token_expiry  = excluded.oauth_token_expiry
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		a.ID, a.Name, a.Email, a.Host, a.Port, a.Username,
 		a.Password, boolToInt(a.TLS), a.PollInterval.String(), a.AuthType, boolToInt(a.Enabled),
+		a.OAuthRefreshToken, a.OAuthAccessToken, nullableTime(a.OAuthTokenExpiry),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert account: %w", err)
+	}
+	return nil
+}
+
+// UpdateTokens writes only the OAuth token columns for an account. Used by the
+// refreshing token source so a token refresh does not rewrite the whole row.
+func (r *AccountRepo) UpdateTokens(
+	ctx context.Context, id, accessToken, refreshToken string, expiry time.Time,
+) error {
+	const q = `UPDATE accounts SET
+		oauth_access_token  = ?,
+		oauth_refresh_token = ?,
+		oauth_token_expiry  = ?
+		WHERE id = ?`
+	if _, err := r.db.ExecContext(ctx, q, accessToken, refreshToken, nullableTime(expiry), id); err != nil {
+		return fmt.Errorf("update account tokens: %w", err)
 	}
 	return nil
 }
@@ -140,10 +162,12 @@ func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 		a            domain.Account
 		tls, enabled int
 		pollStr      string
+		expiry       sql.NullString
 	)
 	if err := s.Scan(
 		&a.ID, &a.Name, &a.Email, &a.Host, &a.Port, &a.Username,
 		&a.Password, &tls, &pollStr, &a.AuthType, &enabled,
+		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry,
 	); err != nil {
 		return nil, err
 	}
@@ -155,6 +179,11 @@ func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 	a.PollInterval = d
 	a.TLS = tls != 0
 	a.Enabled = enabled != 0
+	if expiry.Valid && expiry.String != "" {
+		if a.OAuthTokenExpiry, err = time.Parse(time.RFC3339, expiry.String); err != nil {
+			return nil, fmt.Errorf("parse oauth_token_expiry %q for account %q: %w", expiry.String, a.ID, err)
+		}
+	}
 	if a.AuthType == "" {
 		a.AuthType = domain.AuthPassword
 	}
@@ -166,4 +195,13 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// nullableTime returns nil for the zero time (stored as NULL) or an RFC3339
+// string otherwise, matching how other timestamps are persisted.
+func nullableTime(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339)
 }

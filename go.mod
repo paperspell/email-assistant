@@ -7,6 +7,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.50.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/lmittmann/tint v1.1.3
 	github.com/ncruces/go-sqlite3 v0.35.0
 	github.com/oklog/ulid/v2 v2.1.1
@@ -17,6 +18,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/net v0.56.0
+	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/term v0.44.0
 )
@@ -27,7 +29,6 @@ require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
-	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect

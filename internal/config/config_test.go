@@ -150,6 +150,57 @@ func TestLoad_ZeroPollInterval(t *testing.T) {
 	assert.Contains(t, err.Error(), "poll_interval")
 }
 
+func oauthAccount() domain.Account {
+	a := validAccount()
+	a.ID = "g@example.com"
+	a.Email = "g@example.com"
+	a.Host = "imap.gmail.com"
+	a.AuthType = domain.AuthOAuth
+	a.Password = ""
+	a.OAuthRefreshToken = "refresh-token"
+	return a
+}
+
+func TestLoad_OAuthAccount_RequiresClientCreds(t *testing.T) {
+	// OAuth account present but no global Google client configured.
+	sr, ar := setupRepos(t, validSettings(), []domain.Account{oauthAccount()})
+	_, err := Load(context.Background(), sr, ar)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "oauth.google")
+}
+
+func TestLoad_OAuthAccount_Valid(t *testing.T) {
+	s := validSettings()
+	s["oauth.google.client_id"] = "cid"
+	s["oauth.google.client_secret"] = "csecret"
+	sr, ar := setupRepos(t, s, []domain.Account{oauthAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	require.Len(t, cfg.Accounts, 1)
+	assert.Equal(t, domain.AuthOAuth, cfg.Accounts[0].AuthType)
+	assert.Equal(t, "cid", cfg.OAuth.GoogleClientID)
+	assert.Equal(t, "csecret", cfg.OAuth.GoogleClientSecret)
+}
+
+func TestLoad_OAuthAccount_MissingRefreshToken(t *testing.T) {
+	s := validSettings()
+	s["oauth.google.client_id"] = "cid"
+	s["oauth.google.client_secret"] = "csecret"
+	acc := oauthAccount()
+	acc.OAuthRefreshToken = ""
+	sr, ar := setupRepos(t, s, []domain.Account{acc})
+	_, err := Load(context.Background(), sr, ar)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "refresh token")
+}
+
+func TestLoad_PasswordOnly_NoClientCredsNeeded(t *testing.T) {
+	// A password-only config stays valid without any OAuth settings.
+	sr, ar := setupRepos(t, validSettings(), []domain.Account{validAccount()})
+	_, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+}
+
 func TestLoad_EnvOverride_LogLevel(t *testing.T) {
 	sr, ar := setupRepos(t, validSettings(), []domain.Account{validAccount()})
 	t.Setenv("LOG_LEVEL", "warn")

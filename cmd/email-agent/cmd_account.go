@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/paperspell/email-assistant/internal/auth/keychain"
+	"github.com/paperspell/email-assistant/internal/auth/oauth"
+	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
@@ -71,7 +73,8 @@ func newAccountEditCmd(dbPath *string) *cobra.Command {
 				if acc == nil {
 					return fmt.Errorf("no account matching %q", args[0])
 				}
-				return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin), ar, acc)
+				sr := repo.NewSettingsRepo(sqlDB)
+				return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin), ar, sr, acc)
 			})
 		},
 	}
@@ -144,7 +147,8 @@ func runAccountList(ctx context.Context, ar *repo.AccountRepo) error {
 
 func runAccountAdd(ctx context.Context, path string) error {
 	return withDB(ctx, path, func(ctx context.Context, sqlDB *sql.DB) error {
-		return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin), repo.NewAccountRepo(sqlDB), nil)
+		return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin),
+			repo.NewAccountRepo(sqlDB), repo.NewSettingsRepo(sqlDB), nil)
 	})
 }
 
@@ -178,18 +182,30 @@ func runAccountRemove(ctx context.Context, ar *repo.AccountRepo, ref string) err
 // addOrEditAccount prompts for account fields and upserts the result. When
 // existing is non-nil the prompts are pre-filled with its values (edit flow);
 // the account identity (id) always tracks the email address.
-func addOrEditAccount(ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRepo, existing *domain.Account) error {
+func addOrEditAccount(
+	ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRepo, sr *repo.SettingsRepo, existing *domain.Account,
+) error {
 	cur := domain.Account{
 		Port:         993,
 		TLS:          true,
 		PollInterval: time.Minute,
+		AuthType:     domain.AuthPassword,
 		Enabled:      true,
 	}
 	if existing != nil {
 		cur = *existing
 	}
 
-	fmt.Println("IMAP Account")
+	fmt.Println("Email Account")
+	authType := strings.ToLower(promptText(sc, "  Auth type (password/oauth)", cur.AuthType))
+	if authType != domain.AuthPassword && authType != domain.AuthOAuth {
+		return fmt.Errorf("auth type must be %q or %q", domain.AuthPassword, domain.AuthOAuth)
+	}
+	// Gmail OAuth has well-known IMAP defaults.
+	if authType == domain.AuthOAuth && cur.Host == "" {
+		cur.Host = "imap.gmail.com"
+	}
+
 	name := promptText(sc, "  Name", cur.Name)
 	email := promptText(sc, "  Email", cur.Email)
 	host := promptText(sc, "  Host", cur.Host)
@@ -202,10 +218,6 @@ func addOrEditAccount(ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRe
 		username = email
 	}
 	username = promptText(sc, "  Username", username)
-	password, err := promptPassword("  Password (Enter to keep unchanged)", sc)
-	if err != nil {
-		return fmt.Errorf("read password: %w", err)
-	}
 	tls := promptText(sc, "  TLS", strconv.FormatBool(cur.TLS)) == "true"
 	poll, err := promptDuration(sc, "  Poll interval", cur.PollInterval)
 	if err != nil {
@@ -219,21 +231,32 @@ func addOrEditAccount(ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRe
 		Host:         host,
 		Port:         port,
 		Username:     username,
-		Password:     cur.Password, // kept unless a new one is entered below
 		TLS:          tls,
 		PollInterval: poll,
-		AuthType:     domain.AuthPassword,
+		AuthType:     authType,
 		Enabled:      cur.Enabled,
-	}
-	if password != "" {
-		acc.Password = password
 	}
 
 	if acc.Email == "" || acc.Host == "" {
 		return fmt.Errorf("email and host are required")
 	}
-	if acc.Password == "" {
-		return fmt.Errorf("password is required")
+
+	if authType == domain.AuthOAuth {
+		if err := configureAccountOAuth(ctx, sc, sr, &cur, &acc); err != nil {
+			return err
+		}
+	} else {
+		password, perr := promptPassword("  Password (Enter to keep unchanged)", sc)
+		if perr != nil {
+			return fmt.Errorf("read password: %w", perr)
+		}
+		acc.Password = cur.Password
+		if password != "" {
+			acc.Password = password
+		}
+		if acc.Password == "" {
+			return fmt.Errorf("password is required")
+		}
 	}
 
 	if err := ar.Upsert(ctx, acc); err != nil {
@@ -241,6 +264,50 @@ func addOrEditAccount(ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRe
 	}
 	fmt.Printf("\nSaved account %s.\n", acc.Email)
 	return nil
+}
+
+// configureAccountOAuth carries over existing tokens and runs the Google consent
+// flow when needed, populating acc's OAuth fields.
+func configureAccountOAuth(
+	ctx context.Context, sc *bufio.Scanner, sr *repo.SettingsRepo, cur, acc *domain.Account,
+) error {
+	acc.OAuthRefreshToken = cur.OAuthRefreshToken
+	acc.OAuthAccessToken = cur.OAuthAccessToken
+	acc.OAuthTokenExpiry = cur.OAuthTokenExpiry
+
+	needConsent := acc.OAuthRefreshToken == ""
+	if !needConsent {
+		needConsent = confirm(sc, "  Re-authorize with Google now?", false)
+	}
+	if needConsent {
+		toks, err := runOAuthConsent(ctx, sr)
+		if err != nil {
+			return err
+		}
+		acc.OAuthRefreshToken = toks.RefreshToken
+		acc.OAuthAccessToken = toks.AccessToken
+		acc.OAuthTokenExpiry = toks.Expiry
+	}
+	if acc.OAuthRefreshToken == "" {
+		return fmt.Errorf("OAuth authorization is required for an oauth account")
+	}
+	return nil
+}
+
+// runOAuthConsent loads the global Google client credentials and runs the
+// browser consent flow.
+func runOAuthConsent(ctx context.Context, sr *repo.SettingsRepo) (oauth.Tokens, error) {
+	all, err := sr.GetAll(ctx)
+	if err != nil {
+		return oauth.Tokens{}, err
+	}
+	id := all[config.KeyOAuthGoogleClientID]
+	secret := all[config.KeyOAuthGoogleClientSecret]
+	if id == "" || secret == "" {
+		return oauth.Tokens{}, fmt.Errorf(
+			"no Google OAuth client configured — run 'email-agent init oauth' first")
+	}
+	return oauth.Consent(ctx, oauth.GoogleConfig(id, secret))
 }
 
 // withDB opens the (existing) database, runs migrations, and invokes fn.

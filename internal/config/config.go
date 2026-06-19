@@ -19,6 +19,14 @@ type Config struct {
 	Notification NotificationConfig
 	LLM          LLMConfig
 	Content      ContentConfig
+	OAuth        OAuthConfig
+}
+
+// OAuthConfig holds the global Google OAuth client credentials shared by all
+// OAuth accounts. Per-account tokens live on the account record.
+type OAuthConfig struct {
+	GoogleClientID     string
+	GoogleClientSecret string
 }
 
 // NotificationConfig controls when notifications are sent.
@@ -61,6 +69,8 @@ func DefaultValues() map[string]string {
 // KnownKeys is the set of all valid settings keys. Account fields are stored in
 // the accounts table (managed via the `account` subcommands), not here.
 var KnownKeys = map[string]bool{
+	KeyOAuthGoogleClientID:       true,
+	KeyOAuthGoogleClientSecret:   true,
 	KeyTelegramBotToken:          true,
 	KeyTelegramChatID:            true,
 	KeyTelegramUpdateOffset:      true,
@@ -156,6 +166,12 @@ func applySettings(cfg *Config, s map[string]string) {
 	if v := s[KeyContentMode]; v != "" {
 		cfg.Content.Mode = v
 	}
+	if v := s[KeyOAuthGoogleClientID]; v != "" {
+		cfg.OAuth.GoogleClientID = v
+	}
+	if v := s[KeyOAuthGoogleClientSecret]; v != "" {
+		cfg.OAuth.GoogleClientSecret = v
+	}
 }
 
 func applyEnvOverrides(cfg *Config) {
@@ -168,9 +184,21 @@ func (c *Config) validate() error {
 	if len(c.Accounts) == 0 {
 		return fmt.Errorf("config: no enabled accounts configured — run 'email-agent account add'")
 	}
+	hasOAuthAccount := false
 	for _, acc := range c.Accounts {
-		if acc.Host == "" || acc.Username == "" || acc.Password == "" {
-			return fmt.Errorf("config: account %q is missing host, username, or password", acc.Email)
+		if acc.Host == "" || acc.Username == "" {
+			return fmt.Errorf("config: account %q is missing host or username", acc.Email)
+		}
+		switch acc.AuthType {
+		case domain.AuthOAuth:
+			hasOAuthAccount = true
+			if acc.OAuthRefreshToken == "" {
+				return fmt.Errorf("config: OAuth account %q has no refresh token — run 'email-agent account add'", acc.Email)
+			}
+		default: // password
+			if acc.Password == "" {
+				return fmt.Errorf("config: account %q is missing password", acc.Email)
+			}
 		}
 		if acc.Port == 0 {
 			return fmt.Errorf("config: account %q has invalid port", acc.Email)
@@ -178,6 +206,10 @@ func (c *Config) validate() error {
 		if acc.PollInterval <= 0 {
 			return fmt.Errorf("config: account %q has non-positive poll_interval", acc.Email)
 		}
+	}
+	if hasOAuthAccount && (c.OAuth.GoogleClientID == "" || c.OAuth.GoogleClientSecret == "") {
+		return fmt.Errorf("config: %s and %s are required for OAuth accounts — run 'email-agent init oauth'",
+			KeyOAuthGoogleClientID, KeyOAuthGoogleClientSecret)
 	}
 	if c.Telegram.BotToken == "" {
 		return fmt.Errorf("config: %s is required", KeyTelegramBotToken)

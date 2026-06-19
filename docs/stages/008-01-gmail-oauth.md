@@ -1,6 +1,6 @@
 # 008-01-gmail-oauth.md
 
-Status: Draft
+Status: Implemented
 Version: 0.1
 
 # Stage 008 — Gmail OAuth Backend

@@ -47,8 +47,14 @@ Use Go standard library `log/slog` as the logger interface.
 | Purpose | Import Path | Version |
 |---------|-------------|---------|
 | IMAP client | `github.com/emersion/go-imap/v2` | v2.0.0-beta.8 |
+| SASL mechanisms (XOAUTH2 client) | `github.com/emersion/go-sasl` | (via go-imap) |
+| OAuth 2.0 flow + token refresh (Gmail) | `golang.org/x/oauth2` | v0.30.0 |
 
 > **Note:** go-imap v2 has no stable release yet. v2.0.0-beta.8 is the latest and is the actively maintained version. v1 (`github.com/emersion/go-imap v1.6.0`) is the last fully stable alternative if beta is not acceptable.
+>
+> The Google OAuth endpoint is declared inline (in `internal/auth/oauth`) rather
+> than importing `golang.org/x/oauth2/google`, to avoid pulling in the heavy
+> `cloud.google.com/go` dependency.
 
 ---
 

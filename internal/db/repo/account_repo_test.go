@@ -132,6 +132,48 @@ func TestAccountRepo_Delete(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+func TestAccountRepo_OAuthTokenRoundTrip(t *testing.T) {
+	r := setupAccountRepo(t)
+	ctx := context.Background()
+	acc := sampleAccount("g@example.com")
+	acc.AuthType = domain.AuthOAuth
+	acc.Password = ""
+	acc.OAuthRefreshToken = "refresh-xyz"
+	acc.OAuthAccessToken = "access-abc"
+	acc.OAuthTokenExpiry = time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	require.NoError(t, r.Upsert(ctx, acc))
+
+	got, err := r.Get(ctx, "g@example.com")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, domain.AuthOAuth, got.AuthType)
+	assert.Equal(t, "refresh-xyz", got.OAuthRefreshToken)
+	assert.Equal(t, "access-abc", got.OAuthAccessToken)
+	assert.True(t, acc.OAuthTokenExpiry.Equal(got.OAuthTokenExpiry), "expiry round-trips")
+}
+
+func TestAccountRepo_UpdateTokensOnlyTouchesTokens(t *testing.T) {
+	r := setupAccountRepo(t)
+	ctx := context.Background()
+	acc := sampleAccount("g@example.com")
+	acc.AuthType = domain.AuthOAuth
+	acc.OAuthRefreshToken = "r1"
+	acc.OAuthAccessToken = "a1"
+	require.NoError(t, r.Upsert(ctx, acc))
+
+	newExpiry := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	require.NoError(t, r.UpdateTokens(ctx, "g@example.com", "a2", "r2", newExpiry))
+
+	got, err := r.Get(ctx, "g@example.com")
+	require.NoError(t, err)
+	assert.Equal(t, "a2", got.OAuthAccessToken)
+	assert.Equal(t, "r2", got.OAuthRefreshToken)
+	assert.True(t, newExpiry.Equal(got.OAuthTokenExpiry))
+	// Non-token fields are untouched.
+	assert.Equal(t, "imap.example.com", got.Host)
+	assert.Equal(t, "Test", got.Name)
+}
+
 func TestAccountRepo_UpsertDefaultsAuthType(t *testing.T) {
 	r := setupAccountRepo(t)
 	ctx := context.Background()

@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `007_accounts.sql`
+Current schema reflects migrations up to: `008_oauth_tokens.sql`
 
 ```mermaid
 erDiagram
@@ -42,9 +42,12 @@ erDiagram
         TEXT imap_password "DB encrypted at rest"
         INTEGER tls "1 = use TLS"
         TEXT poll_interval "Go duration string e.g. 1m"
-        TEXT auth_type "password (oauth reserved)"
+        TEXT auth_type "password | oauth"
         INTEGER enabled "1 = polled"
         DATETIME created_at
+        TEXT oauth_refresh_token "oauth accounts only"
+        TEXT oauth_access_token "refreshable cache"
+        DATETIME oauth_token_expiry "nullable"
     }
 
     classifications {

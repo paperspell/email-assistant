@@ -22,4 +22,7 @@ const (
 	KeyLLMScoreDivergenceWarn = "llm.score_divergence_warn"
 
 	KeyContentMode = "content.mode"
+
+	KeyOAuthGoogleClientID     = "oauth.google.client_id"
+	KeyOAuthGoogleClientSecret = "oauth.google.client_secret"
 )

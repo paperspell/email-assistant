@@ -14,7 +14,9 @@ import (
 
 	"github.com/emersion/go-imap/v2/imapclient"
 	"golang.org/x/net/html"
+	"golang.org/x/oauth2"
 
+	"github.com/paperspell/email-assistant/internal/auth/oauth"
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 
@@ -44,13 +46,16 @@ var peekBodySection = &imaplib.FetchItemBodySection{
 
 // Config holds connection parameters for an IMAP server.
 type Config struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
-	TLS       bool
-	FetchBody bool       // fetch plain-text body when true (content.mode = full_body)
-	Logger    log.Logger // nil → no debug output
+	Host     string
+	Port     int
+	Username string
+	Password string
+	// TokenSource, when set, authenticates with XOAUTH2 (OAuth) instead of a
+	// password LOGIN. Username is still used as the SASL identity.
+	TokenSource oauth2.TokenSource
+	TLS         bool
+	FetchBody   bool       // fetch plain-text body when true (content.mode = full_body)
+	Logger      log.Logger // nil → no debug output
 }
 
 // Client implements email.Provider using IMAP.
@@ -91,9 +96,9 @@ func (c *Client) Connect(_ context.Context) error {
 		return fmt.Errorf("imap dial %s: %w", addr, err)
 	}
 
-	if err := cl.Login(c.cfg.Username, c.cfg.Password).Wait(); err != nil {
+	if err := c.authenticate(cl); err != nil {
 		cl.Close() //nolint:errcheck
-		return fmt.Errorf("imap login: %w", err)
+		return err
 	}
 
 	if _, err := cl.Select("INBOX", nil).Wait(); err != nil {
@@ -102,6 +107,30 @@ func (c *Client) Connect(_ context.Context) error {
 	}
 
 	c.client = cl
+	return nil
+}
+
+// authenticate logs in with XOAUTH2 when a token source is configured, otherwise
+// with a password LOGIN.
+func (c *Client) authenticate(cl *imapclient.Client) error {
+	if c.cfg.TokenSource != nil {
+		tok, err := c.cfg.TokenSource.Token() // refreshes the access token if expired
+		if err != nil {
+			if oauth.IsReauthRequired(err) {
+				return fmt.Errorf(
+					"imap oauth: refresh token rejected for %s — re-run 'email-agent account add' to re-authorize: %w",
+					c.cfg.Username, err)
+			}
+			return fmt.Errorf("imap oauth token: %w", err)
+		}
+		if err := cl.Authenticate(oauth.NewXOAUTH2(c.cfg.Username, tok.AccessToken)); err != nil {
+			return fmt.Errorf("imap xoauth2: %w", err)
+		}
+		return nil
+	}
+	if err := cl.Login(c.cfg.Username, c.cfg.Password).Wait(); err != nil {
+		return fmt.Errorf("imap login: %w", err)
+	}
 	return nil
 }
 

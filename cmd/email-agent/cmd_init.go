@@ -46,6 +46,7 @@ func newInitCmd(dbPath *string) *cobra.Command {
 		newInitSectionCmd(dbPath, "telegram", "Reconfigure Telegram settings", configureTelegram),
 		newInitSectionCmd(dbPath, "notifications", "Reconfigure notification settings", configureNotifications),
 		newInitSectionCmd(dbPath, "llm", "Configure LLM classification (optional)", configureLLM),
+		newInitSectionCmd(dbPath, "oauth", "Configure Google OAuth client (for Gmail accounts)", configureOAuth),
 	)
 
 	return initCmd
@@ -120,7 +121,7 @@ func runFullInit(ctx context.Context, path string) error {
 	current, _ := r.GetAll(ctx) //nolint:errcheck
 	applyDefaults(current)
 
-	if err := addOrEditAccount(ctx, sc, ar, nil); err != nil {
+	if err := addOrEditAccount(ctx, sc, ar, r, nil); err != nil {
 		return err
 	}
 	fmt.Println()
@@ -293,6 +294,26 @@ func configureLLM(
 	)
 	settings[config.KeyContentMode] = contentMode
 
+	return saveSettings(ctx, r, settings)
+}
+
+func configureOAuth(
+	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
+) error {
+	fmt.Println("Google OAuth (for Gmail accounts)")
+	fmt.Println("  Create a Desktop-app OAuth client in Google Cloud Console; see")
+	fmt.Println("  docs/stages/rollout/008-01-gmail-oauth-setup.md")
+
+	clientID := promptText(sc, "  Client ID", current[config.KeyOAuthGoogleClientID])
+	clientSecret, err := promptPassword("  Client secret (Enter to keep unchanged)", sc)
+	if err != nil {
+		return fmt.Errorf("read client secret: %w", err)
+	}
+
+	settings := map[string]string{config.KeyOAuthGoogleClientID: clientID}
+	if clientSecret != "" {
+		settings[config.KeyOAuthGoogleClientSecret] = clientSecret
+	}
 	return saveSettings(ctx, r, settings)
 }
 
