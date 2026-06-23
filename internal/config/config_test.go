@@ -87,6 +87,41 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, time.Minute, cfg.Accounts[0].PollInterval)
 }
 
+func TestLoad_PollDefaultInterval_DefaultsTo10m(t *testing.T) {
+	sr, ar := setupRepos(t, validSettings(), []domain.Account{validAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultPollInterval, cfg.Poll.DefaultInterval)
+	assert.Equal(t, 10*time.Minute, cfg.Poll.DefaultInterval)
+}
+
+func TestLoad_PollDefaultInterval_FromSetting(t *testing.T) {
+	s := validSettings()
+	s[KeyPollDefaultInterval] = "15m"
+	sr, ar := setupRepos(t, s, []domain.Account{validAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	assert.Equal(t, 15*time.Minute, cfg.Poll.DefaultInterval)
+}
+
+func TestLoad_PollDefaultInterval_InvalidFallsBack(t *testing.T) {
+	s := validSettings()
+	s[KeyPollDefaultInterval] = "not-a-duration"
+	sr, ar := setupRepos(t, s, []domain.Account{validAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultPollInterval, cfg.Poll.DefaultInterval)
+}
+
+func TestPollIntervalOrDefault(t *testing.T) {
+	assert.Equal(t, DefaultPollInterval, PollIntervalOrDefault(""))
+	assert.Equal(t, DefaultPollInterval, PollIntervalOrDefault("garbage"))
+	assert.Equal(t, DefaultPollInterval, PollIntervalOrDefault("0s"))
+	assert.Equal(t, DefaultPollInterval, PollIntervalOrDefault("-5m"))
+	assert.Equal(t, 30*time.Second, PollIntervalOrDefault("30s"))
+	assert.Equal(t, 20*time.Minute, PollIntervalOrDefault("20m"))
+}
+
 func TestLoad_OnlyEnabledAccounts(t *testing.T) {
 	disabled := validAccount()
 	disabled.ID = "off@example.com"

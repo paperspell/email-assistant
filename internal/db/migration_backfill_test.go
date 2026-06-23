@@ -74,6 +74,41 @@ func TestMigration007_BackfillsExistingAccount(t *testing.T) {
 	assert.Equal(t, 1, enabled, "backfilled account is enabled")
 }
 
+// pollDefaultMigrationVersion is the version of 009_poll_interval_default.sql.
+const pollDefaultMigrationVersion = 9
+
+func TestMigration009_BackfillsOldPollDefault(t *testing.T) {
+	sqlDB, err := Open(":memory:", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	// Migrate up to just before the poll-default migration, then seed accounts:
+	// one on the old 1m default and one with a deliberate non-default value.
+	migrateTo(t, sqlDB, pollDefaultMigrationVersion-1)
+
+	ctx := context.Background()
+	for _, a := range []struct{ id, poll string }{
+		{"old@example.com", "1m"},
+		{"custom@example.com", "5m"},
+	} {
+		_, err := sqlDB.ExecContext(ctx, `
+			INSERT INTO accounts (id, email, imap_host, poll_interval)
+			VALUES (?, ?, ?, ?)`, a.id, a.id, "imap.example.com", a.poll)
+		require.NoError(t, err)
+	}
+
+	migrateTo(t, sqlDB, pollDefaultMigrationVersion)
+
+	poll := func(id string) string {
+		var v string
+		require.NoError(t, sqlDB.QueryRowContext(ctx,
+			`SELECT poll_interval FROM accounts WHERE id = ?`, id).Scan(&v))
+		return v
+	}
+	assert.Equal(t, "10m", poll("old@example.com"), "old 1m default is bumped to 10m")
+	assert.Equal(t, "5m", poll("custom@example.com"), "deliberate value is untouched")
+}
+
 func TestMigration007_NoOpWithoutLegacySettings(t *testing.T) {
 	sqlDB, err := Open(":memory:", "")
 	require.NoError(t, err)

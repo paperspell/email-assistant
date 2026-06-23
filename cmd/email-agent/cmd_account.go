@@ -188,7 +188,7 @@ func addOrEditAccount(
 	cur := domain.Account{
 		Port:         993,
 		TLS:          true,
-		PollInterval: time.Minute,
+		PollInterval: defaultPollInterval(ctx, sr),
 		AuthType:     domain.AuthPassword,
 		Enabled:      true,
 	}
@@ -264,6 +264,16 @@ func addOrEditAccount(
 	}
 	fmt.Printf("\nSaved account %s.\n", acc.Email)
 	return nil
+}
+
+// defaultPollInterval returns the global poll.default_interval setting, falling
+// back to config.DefaultPollInterval when unset, invalid, or unreadable.
+func defaultPollInterval(ctx context.Context, sr *repo.SettingsRepo) time.Duration {
+	v, err := sr.Get(ctx, config.KeyPollDefaultInterval)
+	if err != nil {
+		return config.DefaultPollInterval
+	}
+	return config.PollIntervalOrDefault(v)
 }
 
 // configureAccountOAuth carries over existing tokens and runs the Google consent

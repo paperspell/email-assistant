@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 )
+
+// DefaultPollInterval is the scan interval seeded for new accounts when no
+// global poll.default_interval setting is configured.
+const DefaultPollInterval = 10 * time.Minute
 
 // Config holds all application settings loaded from the database.
 type Config struct {
@@ -20,6 +25,13 @@ type Config struct {
 	LLM          LLMConfig
 	Content      ContentConfig
 	OAuth        OAuthConfig
+	Poll         PollConfig
+}
+
+// PollConfig holds polling defaults. The default interval seeds new accounts;
+// each account stores and may override its own interval in the accounts table.
+type PollConfig struct {
+	DefaultInterval time.Duration
 }
 
 // OAuthConfig holds the global Google OAuth client credentials shared by all
@@ -63,7 +75,22 @@ func DefaultValues() map[string]string {
 		KeyNotificationMinImportance: d.Notification.MinImportance,
 		KeyLLMScoreDivergenceWarn:    strconv.Itoa(d.LLM.ScoreDivergenceWarn),
 		KeyContentMode:               d.Content.Mode,
+		KeyPollDefaultInterval:       d.Poll.DefaultInterval.String(),
 	}
+}
+
+// PollIntervalOrDefault parses a Go duration string, falling back to
+// DefaultPollInterval when empty or invalid. Shared by config loading and the
+// CLI prompt so they agree on what "the default" is.
+func PollIntervalOrDefault(s string) time.Duration {
+	if s == "" {
+		return DefaultPollInterval
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return DefaultPollInterval
+	}
+	return d
 }
 
 // KnownKeys is the set of all valid settings keys. Account fields are stored in
@@ -75,6 +102,7 @@ var KnownKeys = map[string]bool{
 	KeyTelegramChatID:            true,
 	KeyTelegramUpdateOffset:      true,
 	KeyNotificationMinImportance: true,
+	KeyPollDefaultInterval:       true,
 	KeyLLMProvider:               true,
 	KeyLLMAnthropicAPIKey:        true,
 	KeyLLMOpenAIAPIKey:           true,
@@ -125,6 +153,9 @@ func defaults() *Config {
 		Content: ContentConfig{
 			Mode: "headers_only",
 		},
+		Poll: PollConfig{
+			DefaultInterval: DefaultPollInterval,
+		},
 	}
 }
 
@@ -145,6 +176,9 @@ func applySettings(cfg *Config, s map[string]string) {
 	}
 	if v := s[KeyNotificationMinImportance]; v != "" {
 		cfg.Notification.MinImportance = v
+	}
+	if v := s[KeyPollDefaultInterval]; v != "" {
+		cfg.Poll.DefaultInterval = PollIntervalOrDefault(v)
 	}
 	if v := s[KeyLLMProvider]; v != "" {
 		cfg.LLM.Provider = v
@@ -183,6 +217,9 @@ func applyEnvOverrides(cfg *Config) {
 func (c *Config) validate() error {
 	if len(c.Accounts) == 0 {
 		return fmt.Errorf("config: no enabled accounts configured — run 'email-agent account add'")
+	}
+	if c.Poll.DefaultInterval <= 0 {
+		return fmt.Errorf("config: %s must be a positive duration", KeyPollDefaultInterval)
 	}
 	hasOAuthAccount := false
 	for _, acc := range c.Accounts {

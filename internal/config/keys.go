@@ -15,6 +15,10 @@ const (
 
 	KeyNotificationMinImportance = "notification.min_importance"
 
+	// KeyPollDefaultInterval is the default scan interval seeded for new accounts.
+	// Each account stores its own interval in the accounts table and may override it.
+	KeyPollDefaultInterval = "poll.default_interval"
+
 	KeyLLMProvider            = "llm.provider"
 	KeyLLMAnthropicAPIKey     = "llm.anthropic.api_key"
 	KeyLLMOpenAIAPIKey        = "llm.openai.api_key"

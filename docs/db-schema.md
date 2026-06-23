@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `008_oauth_tokens.sql`
+Current schema reflects migrations up to: `009_poll_interval_default.sql`
 
 ```mermaid
 erDiagram
@@ -41,7 +41,7 @@ erDiagram
         TEXT imap_username
         TEXT imap_password "DB encrypted at rest"
         INTEGER tls "1 = use TLS"
-        TEXT poll_interval "Go duration string e.g. 1m"
+        TEXT poll_interval "Go duration string e.g. 10m; default seeded from poll.default_interval"
         TEXT auth_type "password | oauth"
         INTEGER enabled "1 = polled"
         DATETIME created_at

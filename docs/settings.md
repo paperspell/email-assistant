@@ -49,11 +49,18 @@ Each account has these fields (prompted by `account add`/`edit`):
 | Username | string | email | IMAP login username (defaults to the email address) |
 | Password | string | — | IMAP password — stored in the encrypted database |
 | TLS | `true` `false` | `true` | Whether to use TLS; disable only for local/test servers |
-| Poll interval | duration | `1m` | How often to poll for new messages (e.g. `30s`, `1m`, `5m`) |
+| Poll interval | duration | `poll.default_interval` (`10m`) | How often this box is scanned for new messages, e.g. `30s`, `5m`, `10m` (each account independent) |
 | Auth type | `password` `oauth` | `password` | `password` = static IMAP password; `oauth` = Google OAuth (Gmail) |
 | Enabled | `true` `false` | `true` | Disabled accounts are skipped by the daemon |
 
 `email-agent init` configures the first account; use `account add` for more.
+
+The poll-interval prompt is pre-filled from the global default below; the value
+you enter is stored per account, so different boxes can scan at different rates.
+
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `poll.default_interval` | duration | `10m` | Default scan interval offered to new accounts. Existing accounts keep their own stored interval; change one with `account edit`. |
 
 ### Gmail via OAuth
 
