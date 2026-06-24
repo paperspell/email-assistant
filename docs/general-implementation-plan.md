@@ -283,7 +283,58 @@ Gmail API and Microsoft Graph backends remain future work behind the same
 
 ---
 
-## Stage 9 — Daemon Mode
+## Stage 9 — Adaptive Filtering & Daily Digest
+
+Goal:
+
+Turn user feedback into mechanical filters, and collapse unimportant mail into a
+daily digest the user can act on. The baseline scorer drops obvious junk cheaply;
+the LLM judges the rest and gives a summary; the user's choices harden into
+per-account rules so similar mail is filtered — without the LLM — next time.
+
+Layered decision pipeline (most specific wins):
+
+```
+allow rule (Tier-0) > ignore rule (Tier-0) > baseline gate > LLM (+ clauses) > min_importance
+```
+
+Features:
+
+- Per-account filter rules — exact sender, domain, List-Id, and sender-scoped
+  subject pattern (substring matcher; LLM proposes the pattern at creation time).
+- Per-account ignore-only LLM clauses (Tier-1), injected into the classification
+  prompt; managed via CLI (`clauses list/enable/disable/remove`).
+- CLI rule management: `rules list/enable/disable/edit/remove` and `rules why <id>`.
+- Provenance: every ignore decision records what filtered it (`rule:#id` /
+  `baseline` / `llm:low`), shown inline in the digest and via `rules why`.
+- Daily per-account digest of LLM-judged-unimportant mail with summaries, plus a
+  collapsed counter of rule/baseline-dropped junk (expandable via `digest show`).
+- Promote from the digest by replying `/important 3,7` (reply targets the right
+  account); bulk Mark read / Remove (→Trash) act on the remainder.
+- Soft per-account sender-score drift from feedback; promote offers to harden the
+  decision into an allow rule, and reverse-looks-up the rule that filtered it.
+- Default ignore clauses seeded for all accounts; opt-in example rules offered at
+  `init`.
+
+Delivered as three independent sub-stages:
+
+- `docs/stages/009-01-filter-rules-engine.md` — rules + clauses schema (per
+  account), provenance, the layered pipeline in the scheduler, CLI
+  `rules`/`clauses`, default-clause seeding. No Telegram UX, no digest.
+- `docs/stages/009-02-daily-digest.md` — scheduled per-account digest job,
+  promote via `/important` reply, Mark read / Remove (→Trash) buttons,
+  `digest show`.
+- `docs/stages/009-03-telegram-rule-menus.md` — ignore→menu on live
+  notifications (incl. "ignore once"), promote→allow rule, LLM-suggested subject
+  pattern, reverse-lookup at promote.
+
+This stage builds on the feedback loop (Stage 4) and LLM classification (Stage 5)
+and complements — never overrides — the [User Control](#user-control) principle:
+all auto-filtering is reversible triage (ignore / digest), never outbound.
+
+---
+
+## Stage 10 — Daemon Mode
 
 Goal:
 
@@ -298,7 +349,7 @@ Features:
 
 ---
 
-## Stage 10 — Telegram Workflows
+## Stage 11 — Telegram Workflows
 
 Goal:
 
@@ -312,7 +363,7 @@ Features:
 
 ---
 
-## Stage 11 — Reply Assistance
+## Stage 12 — Reply Assistance
 
 Goal:
 
@@ -326,7 +377,7 @@ Features:
 
 ---
 
-## Stage 12 — Semi-Automatic Mode
+## Stage 13 — Semi-Automatic Mode
 
 Goal:
 
@@ -345,6 +396,10 @@ Features:
 - Auto-actions are limited to non-outbound, reversible triage (ignore, handled,
   label); replies and any outbound action still require explicit confirmation,
   per the User Control principle
+
+The daily digest and rule-based auto-ignore triage are delivered earlier by
+[Stage 9](#stage-9--adaptive-filtering--daily-digest); this stage extends that
+foundation toward confidence-based autonomy levels and per-category automation.
 
 This stage builds on the existing feedback loop (Stage 4) and LLM confidence
 scoring (Stage 5), and complements — but never overrides — the
