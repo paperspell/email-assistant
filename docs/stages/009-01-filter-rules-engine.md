@@ -1,7 +1,19 @@
 # 009-01-filter-rules-engine.md
 
-Status: Planned
+Status: Implemented
 Version: 0.1
+
+> Implementation notes (deviations from the draft):
+> - `Message.ListID` lives in `internal/email/provider.go` (the `Message` struct's
+>   actual home), not `email.go`.
+> - Provenance writes go through a new `EmailRepo.UpdateStatusDecidedBy`.
+> - `rules why` takes `<account> <uid>` (UID is what the user sees) rather than a
+>   raw email id.
+> - There is intentionally no `rules add` CLI: rules are born from seeding and
+>   (in 009-03) the Telegram menus; the CLI lists/enables/edits/removes them.
+> - During `init`, the first account is created before the LLM provider is set, so
+>   its Set A clauses are seeded later via the migration backfill rather than at
+>   add time. Accounts added afterwards with `account add` get Set A immediately.
 
 # Stage 009-01 — Filter Rules Engine (per-account)
 

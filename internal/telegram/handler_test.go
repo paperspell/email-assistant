@@ -201,7 +201,7 @@ func TestHandler_Handled_UpdatesStatusAndSenderScore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.StatusHandled, got.Status)
 
-	sender, err := senderRepo.Get(ctx, "boss@work.com")
+	sender, err := senderRepo.Get(ctx, "acc", "boss@work.com")
 	require.NoError(t, err)
 	require.NotNil(t, sender)
 	assert.Equal(t, feedbackPositiveDelta, sender.ImportanceScore)
@@ -222,7 +222,7 @@ func TestHandler_Ignore_UpdatesStatusAndSenderScore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.StatusIgnored, got.Status)
 
-	sender, err := senderRepo.Get(ctx, "news@shop.com")
+	sender, err := senderRepo.Get(ctx, "acc", "news@shop.com")
 	require.NoError(t, err)
 	require.NotNil(t, sender)
 	// score was 0, delta is -25, clamp to 0
@@ -238,6 +238,7 @@ func TestHandler_Ignore_DecreasesExistingSenderScore(t *testing.T) {
 	// Pre-seed sender with a high score
 	require.NoError(t, senderRepo.Upsert(ctx, domain.Sender{
 		ID:              "s-01",
+		AccountID:       "acc",
 		Email:           "news@shop.com",
 		ImportanceScore: 60,
 		SeenCount:       3,
@@ -247,7 +248,7 @@ func TestHandler_Ignore_DecreasesExistingSenderScore(t *testing.T) {
 	e := insertTestEmail(t, emailRepo, "email-01", "news@shop.com")
 	require.NoError(t, h.Handle(ctx, makeUpdate("cq-01", "ignore:"+e.ID, 1)))
 
-	sender, err := senderRepo.Get(ctx, "news@shop.com")
+	sender, err := senderRepo.Get(ctx, "acc", "news@shop.com")
 	require.NoError(t, err)
 	assert.Equal(t, 60-feedbackNegativeDelta, sender.ImportanceScore)
 }

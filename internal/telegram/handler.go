@@ -86,7 +86,7 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 }
 
 func (h *Handler) handleHandled(ctx context.Context, msgID int64, e *domain.Email) error {
-	if err := h.adjustSenderScore(ctx, e.FromEmail, feedbackPositiveDelta); err != nil {
+	if err := h.adjustSenderScore(ctx, e.AccountID, e.FromEmail, feedbackPositiveDelta); err != nil {
 		return err
 	}
 	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusHandled); err != nil {
@@ -98,7 +98,7 @@ func (h *Handler) handleHandled(ctx context.Context, msgID int64, e *domain.Emai
 }
 
 func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email) error {
-	if err := h.adjustSenderScore(ctx, e.FromEmail, -feedbackNegativeDelta); err != nil {
+	if err := h.adjustSenderScore(ctx, e.AccountID, e.FromEmail, -feedbackNegativeDelta); err != nil {
 		return err
 	}
 	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored); err != nil {
@@ -146,8 +146,8 @@ func (h *Handler) fetchBody(ctx context.Context, e *domain.Email) string {
 	return body
 }
 
-func (h *Handler) adjustSenderScore(ctx context.Context, emailAddr string, delta int) error {
-	sender, err := h.SenderRepo.Get(ctx, emailAddr)
+func (h *Handler) adjustSenderScore(ctx context.Context, accountID, emailAddr string, delta int) error {
+	sender, err := h.SenderRepo.Get(ctx, accountID, emailAddr)
 	if err != nil {
 		return fmt.Errorf("load sender: %w", err)
 	}
@@ -156,6 +156,7 @@ func (h *Handler) adjustSenderScore(ctx context.Context, emailAddr string, delta
 	if sender == nil {
 		sender = &domain.Sender{
 			ID:        idx.GenerateID(),
+			AccountID: accountID,
 			Email:     emailAddr,
 			UpdatedAt: now,
 		}

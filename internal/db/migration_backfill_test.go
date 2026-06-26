@@ -109,6 +109,84 @@ func TestMigration009_BackfillsOldPollDefault(t *testing.T) {
 	assert.Equal(t, "5m", poll("custom@example.com"), "deliberate value is untouched")
 }
 
+// filterRulesMigrationVersion is the version of 010_filter_rules.sql.
+const filterRulesMigrationVersion = 10
+
+// scoresPerAccountMigrationVersion is the version of 011_scores_per_account.sql.
+const scoresPerAccountMigrationVersion = 11
+
+func TestMigration010_SeedsDefaultClausesWhenLLMConfigured(t *testing.T) {
+	sqlDB, err := Open(":memory:", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	migrateTo(t, sqlDB, filterRulesMigrationVersion-1)
+	ctx := context.Background()
+
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO accounts (id, email, imap_host) VALUES ('acc-1', 'a@x.com', 'imap.x.com')`)
+	require.NoError(t, err)
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES ('llm.provider', 'anthropic', CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	migrateTo(t, sqlDB, filterRulesMigrationVersion)
+
+	var count int
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM llm_clauses WHERE account_id = 'acc-1' AND source = 'default'`).Scan(&count))
+	assert.Equal(t, 3, count, "the three default ignore clauses are seeded")
+}
+
+func TestMigration010_NoClausesWithoutLLM(t *testing.T) {
+	sqlDB, err := Open(":memory:", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	migrateTo(t, sqlDB, filterRulesMigrationVersion-1)
+	ctx := context.Background()
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO accounts (id, email, imap_host) VALUES ('acc-1', 'a@x.com', 'imap.x.com')`)
+	require.NoError(t, err)
+
+	migrateTo(t, sqlDB, filterRulesMigrationVersion)
+
+	var count int
+	require.NoError(t, sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM llm_clauses`).Scan(&count))
+	assert.Equal(t, 0, count, "no clauses seeded when no LLM provider configured")
+}
+
+func TestMigration011_RecreatesScoresPerAccount(t *testing.T) {
+	sqlDB, err := Open(":memory:", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	migrateTo(t, sqlDB, filterRulesMigrationVersion)
+	ctx := context.Background()
+	// Seed a row in the old global senders table.
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO senders (id, email, importance_score, seen_count, updated_at)
+		 VALUES ('s1', 'a@x.com', 50, 1, CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+
+	migrateTo(t, sqlDB, scoresPerAccountMigrationVersion)
+
+	// Old data is dropped (from-scratch decision).
+	var count int
+	require.NoError(t, sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM senders`).Scan(&count))
+	assert.Equal(t, 0, count)
+
+	// The new schema is per-account: the same address can coexist across accounts.
+	const ins = `INSERT INTO senders (id, account_id, email, importance_score, seen_count, updated_at)
+		VALUES (?, ?, 'a@x.com', ?, 1, CURRENT_TIMESTAMP)`
+	for _, row := range [][]any{{"n1", "acc-a", 10}, {"n2", "acc-b", 90}} {
+		_, err = sqlDB.ExecContext(ctx, ins, row...)
+		require.NoError(t, err)
+	}
+	require.NoError(t, sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM senders`).Scan(&count))
+	assert.Equal(t, 2, count)
+}
+
 func TestMigration007_NoOpWithoutLegacySettings(t *testing.T) {
 	sqlDB, err := Open(":memory:", "")
 	require.NoError(t, err)

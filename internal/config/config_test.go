@@ -122,6 +122,31 @@ func TestPollIntervalOrDefault(t *testing.T) {
 	assert.Equal(t, 20*time.Minute, PollIntervalOrDefault("20m"))
 }
 
+func TestLoad_BaselineFloor_DefaultsToMaybe(t *testing.T) {
+	sr, ar := setupRepos(t, validSettings(), []domain.Account{validAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LevelMaybe, cfg.Filter.BaselineFloor)
+}
+
+func TestLoad_BaselineFloor_FromSetting(t *testing.T) {
+	s := validSettings()
+	s[KeyFilterBaselineFloor] = "ignore"
+	sr, ar := setupRepos(t, s, []domain.Account{validAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LevelIgnore, cfg.Filter.BaselineFloor)
+}
+
+func TestLoad_BaselineFloor_InvalidFails(t *testing.T) {
+	s := validSettings()
+	s[KeyFilterBaselineFloor] = "bogus"
+	sr, ar := setupRepos(t, s, []domain.Account{validAccount()})
+	_, err := Load(context.Background(), sr, ar)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "baseline_floor")
+}
+
 func TestLoad_OnlyEnabledAccounts(t *testing.T) {
 	disabled := validAccount()
 	disabled.ID = "off@example.com"

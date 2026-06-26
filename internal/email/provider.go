@@ -16,6 +16,7 @@ type Message struct {
 	InReplyTo       string // set when this is a reply in an active thread
 	ListUnsubscribe string // set on newsletters
 	Precedence      string // "bulk" or "list" on bulk mail
+	ListID          string // List-Id header; used by list_id filter rules
 	// Body contains the plain-text body; empty when not fetched (FetchBody=false).
 	Body string
 }

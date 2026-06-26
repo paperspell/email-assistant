@@ -54,7 +54,7 @@ func (c *Client) Classify(ctx context.Context, req llm.ClassifyRequest) (llm.Cla
 	resp, err := c.client.CreateChatCompletion(ctx, openaisdk.ChatCompletionRequest{
 		Model: c.model,
 		Messages: []openaisdk.ChatCompletionMessage{
-			{Role: openaisdk.ChatMessageRoleSystem, Content: llm.SystemPrompt()},
+			{Role: openaisdk.ChatMessageRoleSystem, Content: llm.SystemPrompt(req.IgnoreClauses)},
 			{Role: openaisdk.ChatMessageRoleUser, Content: llm.FormatUserMessage(req)},
 		},
 		ResponseFormat: &openaisdk.ChatCompletionResponseFormat{

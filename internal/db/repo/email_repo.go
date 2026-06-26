@@ -51,7 +51,7 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 func (r *EmailRepo) GetByID(ctx context.Context, id string) (*domain.Email, error) {
 	const q = `
 		SELECT id, account_id, message_uid, subject, from_email, from_name,
-		       date, status, received_at, language, telegram_message_id
+		       date, status, received_at, language, telegram_message_id, decided_by
 		FROM emails WHERE id = ?
 	`
 	row := r.db.QueryRowContext(ctx, q, id)
@@ -63,7 +63,7 @@ func (r *EmailRepo) GetByID(ctx context.Context, id string) (*domain.Email, erro
 func (r *EmailRepo) GetByAccountAndUID(ctx context.Context, accountID string, uid uint32) (*domain.Email, error) {
 	const q = `
 		SELECT id, account_id, message_uid, subject, from_email, from_name,
-		       date, status, received_at, language, telegram_message_id
+		       date, status, received_at, language, telegram_message_id, decided_by
 		FROM emails
 		WHERE account_id = ? AND message_uid = ?
 	`
@@ -84,6 +84,26 @@ func (r *EmailRepo) UpdateStatus(ctx context.Context, id string, status domain.E
 	}
 	if n == 0 {
 		return fmt.Errorf("update email status: email %q not found", id)
+	}
+	return nil
+}
+
+// UpdateStatusDecidedBy updates an email's status and records what filtered it
+// (provenance). Used by the scheduler when an email is ignored.
+func (r *EmailRepo) UpdateStatusDecidedBy(
+	ctx context.Context, id string, status domain.EmailStatus, decidedBy string,
+) error {
+	const q = `UPDATE emails SET status = ?, decided_by = ? WHERE id = ?`
+	res, err := r.db.ExecContext(ctx, q, string(status), decidedBy, id)
+	if err != nil {
+		return fmt.Errorf("update email status/decided_by: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("update email status/decided_by: email %q not found", id)
 	}
 	return nil
 }
@@ -113,7 +133,7 @@ func scanEmail(row *sql.Row) (*domain.Email, error) {
 		&e.ID, &e.AccountID, &e.MessageUID,
 		&e.Subject, &e.FromEmail, &e.FromName,
 		&dateStr, &status, &receivedAtStr, &e.Language,
-		&e.TelegramMessageID,
+		&e.TelegramMessageID, &e.DecidedBy,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

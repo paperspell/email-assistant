@@ -17,6 +17,9 @@ type ClassifyRequest struct {
 	Language           string
 	IsReply            bool
 	HasListUnsubscribe bool
+	// IgnoreClauses are per-account natural-language ignore instructions appended
+	// to the system prompt. Empty for accounts with no active clauses.
+	IgnoreClauses []string
 }
 
 // ClassifyResult holds the structured output from an LLM provider.
@@ -54,8 +57,26 @@ Scoring guide:
 Be conservative: err toward lower scores for unknown senders and marketing content.
 Reply with JSON only, no prose.`
 
-// SystemPrompt returns the shared system prompt for all providers.
-func SystemPrompt() string { return systemPrompt }
+// SystemPrompt returns the shared system prompt plus any active per-account
+// ignore clauses. Clauses are rendered as a bounded, clearly-delimited list so
+// the model treats matching mail as not important.
+func SystemPrompt(ignoreClauses []string) string {
+	if len(ignoreClauses) == 0 {
+		return systemPrompt
+	}
+	var b strings.Builder
+	b.WriteString(systemPrompt)
+	b.WriteString("\n\nAdditional user-defined ignore rules " +
+		"(treat matching mail as not important, i.e. level \"ignore\"):\n")
+	for _, c := range ignoreClauses {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "- %s\n", c)
+	}
+	return b.String()
+}
 
 // FormatUserMessage formats a ClassifyRequest as the user turn text.
 func FormatUserMessage(req ClassifyRequest) string {

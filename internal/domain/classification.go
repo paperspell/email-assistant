@@ -52,18 +52,22 @@ type Classification struct {
 	Summary      string // empty for rule_based; LLM-generated sentence(s)
 }
 
-// Sender tracks per-sender statistics used by the importance filter.
+// Sender tracks per-sender statistics used by the importance filter. Scoped to a
+// single account (the same address may carry different scores per mailbox).
 type Sender struct {
 	ID              string
+	AccountID       string
 	Email           string
 	ImportanceScore int
 	SeenCount       int
 	UpdatedAt       time.Time
 }
 
-// Record tracks per-domain statistics used by the importance filter.
+// Record tracks per-domain statistics used by the importance filter. Scoped to a
+// single account.
 type Record struct {
 	ID              string
+	AccountID       string
 	Domain          string
 	ImportanceScore int
 	UpdatedAt       time.Time

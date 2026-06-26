@@ -18,6 +18,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
+	"github.com/paperspell/email-assistant/internal/filter"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
@@ -65,6 +66,7 @@ func main() {
 	root.AddCommand(
 		runCmd, versionCmd,
 		newInitCmd(&dbPath), newConfigCmd(&dbPath), newAuditCmd(&dbPath), newAccountCmd(&dbPath),
+		newRulesCmd(&dbPath), newClausesCmd(&dbPath),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -119,8 +121,11 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	auditRepo := repo.NewAuditRepo(sqlDB)
 	senderRepo := repo.NewSenderRepo(sqlDB)
 	domainRepo := repo.NewDomainRepo(sqlDB)
+	ruleRepo := repo.NewRuleRepo(sqlDB)
+	clauseRepo := repo.NewClauseRepo(sqlDB)
 
-	filter := importance.NewFilter(senderRepo, domainRepo)
+	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
+	ruleEngine := filter.NewEngine()
 
 	bot, err := telegram.NewBot(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
 	if err != nil {
@@ -161,13 +166,17 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			SyncRepo:            syncRepo,
 			ClassificationRepo:  classificationRepo,
 			AuditRepo:           auditRepo,
-			Filter:              filter,
+			Filter:              importanceFilter,
 			LLMProvider:         llmProvider,
 			ContentMode:         cfg.Content.Mode,
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
 			Notifier:            bot,
 			Logger:              logger.With("component", "scheduler", "account", acc.Email),
+			RuleRepo:            ruleRepo,
+			ClauseRepo:          clauseRepo,
+			RuleEngine:          ruleEngine,
+			BaselineFloor:       cfg.Filter.BaselineFloor,
 		})
 		g.Go(func() error { return sched.Start(gCtx) })
 	}

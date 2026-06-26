@@ -24,15 +24,17 @@ func NewFilter(senderRepo *repo.SenderRepo, domainRepo *repo.DomainRepo) *Filter
 }
 
 // Classify scores msg and returns a Classification.
-// It also increments the sender's seen_count in the database.
-func (f *Filter) Classify(ctx context.Context, emailID string, msg email.Message) (domain.Classification, error) {
-	sender, err := f.senderRepo.Get(ctx, msg.FromEmail)
+// It also increments the sender's seen_count for the account in the database.
+func (f *Filter) Classify(
+	ctx context.Context, accountID, emailID string, msg email.Message,
+) (domain.Classification, error) {
+	sender, err := f.senderRepo.Get(ctx, accountID, msg.FromEmail)
 	if err != nil {
 		return domain.Classification{}, fmt.Errorf("load sender: %w", err)
 	}
 
 	domainStr := features.ExtractDomain(msg.FromEmail)
-	domRec, err := f.domainRepo.Get(ctx, domainStr)
+	domRec, err := f.domainRepo.Get(ctx, accountID, domainStr)
 	if err != nil {
 		return domain.Classification{}, fmt.Errorf("load domain: %w", err)
 	}
@@ -54,6 +56,7 @@ func (f *Filter) Classify(ctx context.Context, emailID string, msg email.Message
 	// Increment sender seen_count
 	now := timex.NowUTC()
 	newSender := domain.Sender{
+		AccountID:       accountID,
 		Email:           msg.FromEmail,
 		ImportanceScore: senderScore,
 		SeenCount:       seenCount + 1,

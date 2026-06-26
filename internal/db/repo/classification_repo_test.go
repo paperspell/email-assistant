@@ -119,6 +119,7 @@ func TestSenderRepo_Upsert_And_Get(t *testing.T) {
 
 	s := domain.Sender{
 		ID:              "s-01",
+		AccountID:       testAcct,
 		Email:           "alice@example.com",
 		ImportanceScore: 20,
 		SeenCount:       5,
@@ -126,7 +127,7 @@ func TestSenderRepo_Upsert_And_Get(t *testing.T) {
 	}
 	require.NoError(t, r.Upsert(ctx, s))
 
-	got, err := r.Get(ctx, "alice@example.com")
+	got, err := r.Get(ctx, testAcct, "alice@example.com")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, 20, got.ImportanceScore)
@@ -136,7 +137,7 @@ func TestSenderRepo_Upsert_And_Get(t *testing.T) {
 func TestSenderRepo_Get_NotFound(t *testing.T) {
 	d := openTestDB(t)
 	r := NewSenderRepo(d)
-	got, err := r.Get(context.Background(), "nobody@example.com")
+	got, err := r.Get(context.Background(), testAcct, "nobody@example.com")
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }
@@ -146,13 +147,13 @@ func TestSenderRepo_Upsert_Increments(t *testing.T) {
 	r := NewSenderRepo(d)
 	ctx := context.Background()
 
-	s := domain.Sender{ID: "s-01", Email: "a@b.com", SeenCount: 1, UpdatedAt: time.Now().UTC()}
+	s := domain.Sender{ID: "s-01", AccountID: testAcct, Email: "a@b.com", SeenCount: 1, UpdatedAt: time.Now().UTC()}
 	require.NoError(t, r.Upsert(ctx, s))
 
 	s.SeenCount = 2
 	require.NoError(t, r.Upsert(ctx, s))
 
-	got, err := r.Get(ctx, "a@b.com")
+	got, err := r.Get(ctx, testAcct, "a@b.com")
 	require.NoError(t, err)
 	assert.Equal(t, 2, got.SeenCount)
 }
@@ -164,13 +165,14 @@ func TestDomainRepo_Upsert_And_Get(t *testing.T) {
 
 	rec := domain.Record{
 		ID:              "d-01",
+		AccountID:       testAcct,
 		Domain:          "school.pl",
 		ImportanceScore: 30,
 		UpdatedAt:       time.Now().UTC().Truncate(time.Second),
 	}
 	require.NoError(t, r.Upsert(ctx, rec))
 
-	got, err := r.Get(ctx, "school.pl")
+	got, err := r.Get(ctx, testAcct, "school.pl")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, 30, got.ImportanceScore)
@@ -179,7 +181,7 @@ func TestDomainRepo_Upsert_And_Get(t *testing.T) {
 func TestDomainRepo_Get_NotFound(t *testing.T) {
 	d := openTestDB(t)
 	r := NewDomainRepo(d)
-	got, err := r.Get(context.Background(), "unknown.com")
+	got, err := r.Get(context.Background(), testAcct, "unknown.com")
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }

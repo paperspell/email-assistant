@@ -14,6 +14,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
+	"github.com/paperspell/email-assistant/internal/filter"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
@@ -122,7 +123,7 @@ func newTestSchedulerFull(
 	classRepo := repo.NewClassificationRepo(sqlDB)
 	senderRepo := repo.NewSenderRepo(sqlDB)
 	domainRepo := repo.NewDomainRepo(sqlDB)
-	filter := importance.NewFilter(senderRepo, domainRepo)
+	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 
 	sched := New(Config{
 		AccountID:           "test@example.com",
@@ -131,12 +132,16 @@ func newTestSchedulerFull(
 		EmailRepo:           emailRepo,
 		SyncRepo:            syncRepo,
 		ClassificationRepo:  classRepo,
-		Filter:              filter,
+		Filter:              importanceFilter,
 		LLMProvider:         llmProvider,
 		ScoreDivergenceWarn: divergenceWarn,
 		Provider:            provider,
 		Notifier:            notifier,
 		Logger:              log.Noop{},
+		RuleRepo:            repo.NewRuleRepo(sqlDB),
+		ClauseRepo:          repo.NewClauseRepo(sqlDB),
+		RuleEngine:          filter.NewEngine(),
+		BaselineFloor:       domain.LevelMaybe,
 	})
 	return sched, emailRepo, syncRepo
 }
@@ -506,7 +511,7 @@ func TestScheduler_MultiAccount_IndependentSyncState(t *testing.T) {
 	classRepo := repo.NewClassificationRepo(sqlDB)
 	senderRepo := repo.NewSenderRepo(sqlDB)
 	domainRepo := repo.NewDomainRepo(sqlDB)
-	filter := importance.NewFilter(senderRepo, domainRepo)
+	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 
 	newSched := func(accountID string, provider email.Provider, notifier *mockNotifier) *Scheduler {
 		return New(Config{
@@ -516,10 +521,14 @@ func TestScheduler_MultiAccount_IndependentSyncState(t *testing.T) {
 			EmailRepo:          emailRepo,
 			SyncRepo:           syncRepo,
 			ClassificationRepo: classRepo,
-			Filter:             filter,
+			Filter:             importanceFilter,
 			Provider:           provider,
 			Notifier:           notifier,
 			Logger:             log.Noop{},
+			RuleRepo:           repo.NewRuleRepo(sqlDB),
+			ClauseRepo:         repo.NewClauseRepo(sqlDB),
+			RuleEngine:         filter.NewEngine(),
+			BaselineFloor:      domain.LevelMaybe,
 		})
 	}
 

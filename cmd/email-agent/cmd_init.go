@@ -121,7 +121,8 @@ func runFullInit(ctx context.Context, path string) error {
 	current, _ := r.GetAll(ctx) //nolint:errcheck
 	applyDefaults(current)
 
-	if err := addOrEditAccount(ctx, sc, ar, r, nil); err != nil {
+	if err := addOrEditAccount(ctx, sc, ar, r,
+		repo.NewClauseRepo(sqlDB), repo.NewRuleRepo(sqlDB), nil); err != nil {
 		return err
 	}
 	fmt.Println()

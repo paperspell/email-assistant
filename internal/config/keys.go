@@ -19,6 +19,10 @@ const (
 	// Each account stores its own interval in the accounts table and may override it.
 	KeyPollDefaultInterval = "poll.default_interval"
 
+	// KeyFilterBaselineFloor is the importance level at or below which the baseline
+	// scorer drops mail without invoking the LLM. Default "maybe".
+	KeyFilterBaselineFloor = "filter.baseline_floor"
+
 	KeyLLMProvider            = "llm.provider"
 	KeyLLMAnthropicAPIKey     = "llm.anthropic.api_key"
 	KeyLLMOpenAIAPIKey        = "llm.openai.api_key"

@@ -27,4 +27,9 @@ type Email struct {
 	ReceivedAt        time.Time
 	Language          string
 	TelegramMessageID int64 // 0 until a notification is sent
+
+	// DecidedBy records what filtered an ignored email: "rule:<id>" (Tier-0
+	// rule), "baseline" (score gate), or "llm:low" (LLM judged it unimportant).
+	// Empty when the email was notified or forced important by an allow rule.
+	DecidedBy string
 }

@@ -26,7 +26,7 @@ import (
 const maxBodyLen = 3000
 
 // extraHeaders lists the additional header fields fetched alongside ENVELOPE.
-var extraHeaders = []string{"In-Reply-To", "List-Unsubscribe", "Precedence"}
+var extraHeaders = []string{"In-Reply-To", "List-Unsubscribe", "Precedence", "List-Id"}
 
 // Peek avoids setting the \Seen flag; a BODY[HEADER.FIELDS] fetch without it
 // implicitly marks the message as read (RFC 3501 §6.4.5).
@@ -315,6 +315,7 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer, logger log.Logger) []e
 			msg.InReplyTo = h.Get("In-Reply-To")
 			msg.ListUnsubscribe = h.Get("List-Unsubscribe")
 			msg.Precedence = h.Get("Precedence")
+			msg.ListID = h.Get("List-Id")
 		}
 
 		out = append(out, msg)

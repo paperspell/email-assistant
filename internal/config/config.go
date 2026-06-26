@@ -26,6 +26,14 @@ type Config struct {
 	Content      ContentConfig
 	OAuth        OAuthConfig
 	Poll         PollConfig
+	Filter       FilterConfig
+}
+
+// FilterConfig controls the mechanical filtering layer.
+type FilterConfig struct {
+	// BaselineFloor is the importance level at or below which the rule-based
+	// scorer drops mail before the LLM runs. Default LevelMaybe.
+	BaselineFloor domain.ImportanceLevel
 }
 
 // PollConfig holds polling defaults. The default interval seeds new accounts;
@@ -76,6 +84,7 @@ func DefaultValues() map[string]string {
 		KeyLLMScoreDivergenceWarn:    strconv.Itoa(d.LLM.ScoreDivergenceWarn),
 		KeyContentMode:               d.Content.Mode,
 		KeyPollDefaultInterval:       d.Poll.DefaultInterval.String(),
+		KeyFilterBaselineFloor:       string(d.Filter.BaselineFloor),
 	}
 }
 
@@ -103,6 +112,7 @@ var KnownKeys = map[string]bool{
 	KeyTelegramUpdateOffset:      true,
 	KeyNotificationMinImportance: true,
 	KeyPollDefaultInterval:       true,
+	KeyFilterBaselineFloor:       true,
 	KeyLLMProvider:               true,
 	KeyLLMAnthropicAPIKey:        true,
 	KeyLLMOpenAIAPIKey:           true,
@@ -156,6 +166,9 @@ func defaults() *Config {
 		Poll: PollConfig{
 			DefaultInterval: DefaultPollInterval,
 		},
+		Filter: FilterConfig{
+			BaselineFloor: domain.LevelMaybe,
+		},
 	}
 }
 
@@ -179,6 +192,9 @@ func applySettings(cfg *Config, s map[string]string) {
 	}
 	if v := s[KeyPollDefaultInterval]; v != "" {
 		cfg.Poll.DefaultInterval = PollIntervalOrDefault(v)
+	}
+	if v := s[KeyFilterBaselineFloor]; v != "" {
+		cfg.Filter.BaselineFloor = domain.ImportanceLevel(v)
 	}
 	if v := s[KeyLLMProvider]; v != "" {
 		cfg.LLM.Provider = v
@@ -220,6 +236,12 @@ func (c *Config) validate() error {
 	}
 	if c.Poll.DefaultInterval <= 0 {
 		return fmt.Errorf("config: %s must be a positive duration", KeyPollDefaultInterval)
+	}
+	switch c.Filter.BaselineFloor {
+	case domain.LevelIgnore, domain.LevelMaybe, domain.LevelImportant, domain.LevelCritical:
+		// valid
+	default:
+		return fmt.Errorf("config: unknown %s %q", KeyFilterBaselineFloor, c.Filter.BaselineFloor)
 	}
 	hasOAuthAccount := false
 	for _, acc := range c.Accounts {

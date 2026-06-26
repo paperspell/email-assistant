@@ -12,6 +12,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/features"
+	"github.com/paperspell/email-assistant/internal/filter"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
@@ -39,6 +40,12 @@ type Config struct {
 	Provider            email.Provider
 	Notifier            telegram.Notifier
 	Logger              log.Logger
+
+	// Mechanical filtering layer (Stage 9).
+	RuleRepo      *repo.RuleRepo
+	ClauseRepo    *repo.ClauseRepo
+	RuleEngine    filter.Engine
+	BaselineFloor domain.ImportanceLevel // baseline level at/below which the LLM is skipped
 }
 
 // Scheduler polls an IMAP account and sends Telegram notifications for new emails.
@@ -147,9 +154,20 @@ func (s *Scheduler) poll(ctx context.Context) error {
 
 	s.cfg.Logger.Debug("poll completed", "account_id", s.cfg.AccountID, "new_messages", len(messages))
 
+	// Load the account's enabled rules and active ignore clauses once per poll, so
+	// CLI/Telegram edits take effect on the next cycle.
+	rules, err := s.cfg.RuleRepo.ListEnabled(ctx, s.cfg.AccountID)
+	if err != nil {
+		return err
+	}
+	clauseTexts, err := s.cfg.ClauseRepo.ActiveTexts(ctx, s.cfg.AccountID)
+	if err != nil {
+		return err
+	}
+
 	var maxUID = lastUID
 	for _, msg := range messages {
-		if err := s.processMessage(ctx, msg); err != nil {
+		if err := s.processMessage(ctx, msg, rules, clauseTexts); err != nil {
 			s.cfg.Logger.Error(err, "account_id", s.cfg.AccountID, "uid", msg.UID)
 			continue
 		}
@@ -171,7 +189,9 @@ func (s *Scheduler) poll(ctx context.Context) error {
 	return nil
 }
 
-func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error {
+func (s *Scheduler) processMessage(
+	ctx context.Context, msg email.Message, rules []domain.FilterRule, clauseTexts []string,
+) error {
 	lang := features.DetectLanguage(msg.Subject)
 
 	e := domain.Email{
@@ -191,34 +211,35 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		return err
 	}
 
-	// Rule-based classification
-	ruleClass, err := s.cfg.Filter.Classify(ctx, e.ID, msg)
+	// 1. Explicit per-account rules (Tier-0): allow forces notify, ignore skips the LLM.
+	if action, matched, ok := s.cfg.RuleEngine.Evaluate(rules, msg); ok {
+		if action == domain.RuleActionAllow {
+			return s.notifyAllowed(ctx, e, msg, matched)
+		}
+		return s.ignoreEmail(ctx, e, msg, "rule:"+matched.ID,
+			"rule_type", matched.Type, "rule_value", matched.Value)
+	}
+
+	// 2. Baseline rule-based scoring (the cheap gate).
+	ruleClass, err := s.cfg.Filter.Classify(ctx, s.cfg.AccountID, e.ID, msg)
 	if err != nil {
 		return err
 	}
 	if err := s.cfg.ClassificationRepo.Save(ctx, ruleClass); err != nil {
 		return err
 	}
-
-	// Rule-based is the gate: if it says ignore, skip LLM entirely
-	if !s.shouldNotify(ruleClass.Level) {
-		s.cfg.Logger.Info("email ignored",
-			"account_id", s.cfg.AccountID,
-			"uid", msg.UID,
-			"from", msg.FromEmail,
-			"subject", msg.Subject,
-			"level", string(ruleClass.Level),
-			"score", ruleClass.Score,
-			"category", string(ruleClass.Category),
-			"reason", strings.Join(ruleClass.Reason, "; "),
-		)
-		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
+	if levelRank(ruleClass.Level) < levelRank(s.cfg.BaselineFloor) {
+		return s.ignoreEmail(ctx, e, msg, "baseline",
+			"level", string(ruleClass.Level), "score", ruleClass.Score,
+			"reason", strings.Join(ruleClass.Reason, "; "))
 	}
 
-	// LLM classification (optional — non-fatal on error)
+	// 3. LLM classification (optional — non-fatal on error), with per-account ignore clauses.
 	classification := ruleClass
+	llmDecided := false
 	if s.cfg.LLMProvider != nil {
 		req := buildLLMRequest(msg, lang, s.cfg.ContentMode)
+		req.IgnoreClauses = clauseTexts
 		llmResult, llmErr := s.cfg.LLMProvider.Classify(ctx, req)
 		if llmErr != nil {
 			s.cfg.Logger.Warn(fmt.Errorf("llm classify: %w", llmErr),
@@ -255,36 +276,38 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 			}
 			s.logDivergence(ruleClass, llmClass)
 			classification = llmClass
+			llmDecided = true
 		}
 	}
 
-	// Final notification decision uses the LLM result (or rule-based if LLM was skipped/failed)
+	// 4. Final notification decision uses the LLM result (or rule-based if LLM was skipped/failed).
 	if !s.shouldNotify(classification.Level) {
-		s.cfg.Logger.Info("email ignored after llm",
-			"account_id", s.cfg.AccountID,
-			"uid", msg.UID,
-			"from", msg.FromEmail,
-			"subject", msg.Subject,
-			"level", string(classification.Level),
-			"score", classification.Score,
-			"summary", classification.Summary,
-		)
-		return s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored)
+		decidedBy := "baseline"
+		if llmDecided {
+			decidedBy = "llm:low"
+		}
+		return s.ignoreEmail(ctx, e, msg, decidedBy,
+			"level", string(classification.Level), "score", classification.Score,
+			"summary", classification.Summary)
 	}
 
+	return s.notify(ctx, e, msg, classification)
+}
+
+// notify sends a Telegram notification and marks the email notified.
+func (s *Scheduler) notify(
+	ctx context.Context, e domain.Email, msg email.Message, classification domain.Classification,
+) error {
 	tgMsgID, err := s.cfg.Notifier.SendNewEmail(ctx, e, classification, s.cfg.AccountName, s.cfg.AccountEmail)
 	if err != nil {
 		return err
 	}
-
 	if err := s.cfg.EmailRepo.SetTelegramMessageID(ctx, e.ID, tgMsgID); err != nil {
 		return err
 	}
-
 	if err := s.cfg.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusNotified); err != nil {
 		return err
 	}
-
 	s.cfg.Logger.Info("notified",
 		"account_id", s.cfg.AccountID,
 		"uid", msg.UID,
@@ -296,20 +319,64 @@ func (s *Scheduler) processMessage(ctx context.Context, msg email.Message) error
 		"source", classification.Source,
 		"summary", classification.Summary,
 	)
-
 	return nil
 }
 
-func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
-	order := map[domain.ImportanceLevel]int{
-		domain.LevelIgnore:    0,
-		domain.LevelMaybe:     1,
-		domain.LevelImportant: 2,
-		domain.LevelCritical:  3,
+// notifyAllowed forces an allow-rule match to be treated as important and notified.
+func (s *Scheduler) notifyAllowed(
+	ctx context.Context, e domain.Email, msg email.Message, rule *domain.FilterRule,
+) error {
+	c := domain.Classification{
+		ID:           idx.GenerateID(),
+		EmailID:      e.ID,
+		Level:        domain.LevelImportant,
+		Category:     domain.CategoryOther,
+		Score:        100,
+		Reason:       []string{"allow rule: " + rule.Type + "=" + rule.Value},
+		ClassifiedAt: timex.NowUTC(),
+		Source:       domain.SourceRuleBased,
 	}
-	threshold := order[s.cfg.MinImportance]
-	got := order[level]
-	return got >= threshold
+	if err := s.cfg.ClassificationRepo.Save(ctx, c); err != nil {
+		return err
+	}
+	s.cfg.Logger.Info("allow rule matched",
+		"account_id", s.cfg.AccountID, "uid", msg.UID,
+		"rule_id", rule.ID, "rule_type", rule.Type, "rule_value", rule.Value)
+	return s.notify(ctx, e, msg, c)
+}
+
+// ignoreEmail marks an email ignored and records its provenance (decided_by).
+func (s *Scheduler) ignoreEmail(
+	ctx context.Context, e domain.Email, msg email.Message, decidedBy string, kv ...any,
+) error {
+	fields := append([]any{
+		"account_id", s.cfg.AccountID,
+		"uid", msg.UID,
+		"from", msg.FromEmail,
+		"subject", msg.Subject,
+		"decided_by", decidedBy,
+	}, kv...)
+	s.cfg.Logger.Info("email ignored", fields...)
+	return s.cfg.EmailRepo.UpdateStatusDecidedBy(ctx, e.ID, domain.StatusIgnored, decidedBy)
+}
+
+// levelRank orders importance levels for threshold comparisons. Unknown levels
+// (including the empty string) rank lowest.
+func levelRank(level domain.ImportanceLevel) int {
+	switch level {
+	case domain.LevelMaybe:
+		return 1
+	case domain.LevelImportant:
+		return 2
+	case domain.LevelCritical:
+		return 3
+	default: // LevelIgnore and unknown
+		return 0
+	}
+}
+
+func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
+	return levelRank(level) >= levelRank(s.cfg.MinImportance)
 }
 
 func (s *Scheduler) logDivergence(rule, llmClass domain.Classification) {

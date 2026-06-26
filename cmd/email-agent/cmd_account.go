@@ -18,6 +18,8 @@ import (
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/filter"
+	"github.com/paperspell/email-assistant/internal/pkg/idx"
 )
 
 func newAccountCmd(dbPath *string) *cobra.Command {
@@ -74,7 +76,8 @@ func newAccountEditCmd(dbPath *string) *cobra.Command {
 					return fmt.Errorf("no account matching %q", args[0])
 				}
 				sr := repo.NewSettingsRepo(sqlDB)
-				return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin), ar, sr, acc)
+				return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin), ar, sr,
+					repo.NewClauseRepo(sqlDB), repo.NewRuleRepo(sqlDB), acc)
 			})
 		},
 	}
@@ -148,7 +151,8 @@ func runAccountList(ctx context.Context, ar *repo.AccountRepo) error {
 func runAccountAdd(ctx context.Context, path string) error {
 	return withDB(ctx, path, func(ctx context.Context, sqlDB *sql.DB) error {
 		return addOrEditAccount(ctx, bufio.NewScanner(os.Stdin),
-			repo.NewAccountRepo(sqlDB), repo.NewSettingsRepo(sqlDB), nil)
+			repo.NewAccountRepo(sqlDB), repo.NewSettingsRepo(sqlDB),
+			repo.NewClauseRepo(sqlDB), repo.NewRuleRepo(sqlDB), nil)
 	})
 }
 
@@ -183,7 +187,8 @@ func runAccountRemove(ctx context.Context, ar *repo.AccountRepo, ref string) err
 // existing is non-nil the prompts are pre-filled with its values (edit flow);
 // the account identity (id) always tracks the email address.
 func addOrEditAccount(
-	ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRepo, sr *repo.SettingsRepo, existing *domain.Account,
+	ctx context.Context, sc *bufio.Scanner, ar *repo.AccountRepo, sr *repo.SettingsRepo,
+	cr *repo.ClauseRepo, rr *repo.RuleRepo, existing *domain.Account,
 ) error {
 	cur := domain.Account{
 		Port:         993,
@@ -263,6 +268,69 @@ func addOrEditAccount(
 		return err
 	}
 	fmt.Printf("\nSaved account %s.\n", acc.Email)
+
+	// Seed default rules/clauses for newly added accounts only.
+	if existing == nil {
+		if err := seedAccountDefaults(ctx, sc, sr, cr, rr, acc.ID); err != nil {
+			return fmt.Errorf("seed defaults: %w", err)
+		}
+	}
+	return nil
+}
+
+// seedAccountDefaults seeds the Set A default ignore clauses (when an LLM provider
+// is configured) and offers the Set B example rules. Idempotent: clauses are only
+// seeded when the account has none yet.
+func seedAccountDefaults(
+	ctx context.Context, sc *bufio.Scanner,
+	sr *repo.SettingsRepo, cr *repo.ClauseRepo, rr *repo.RuleRepo, accountID string,
+) error {
+	provider, err := sr.Get(ctx, config.KeyLLMProvider)
+	if err != nil {
+		return err
+	}
+	if provider != "" {
+		count, err := cr.Count(ctx, accountID)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			for _, text := range filter.DefaultIgnoreClauses() {
+				if err := cr.Add(ctx, domain.LLMClause{
+					ID:        idx.GenerateID(),
+					AccountID: accountID,
+					Text:      text,
+					Enabled:   true,
+					Source:    domain.RuleSourceDefault,
+				}); err != nil {
+					return err
+				}
+			}
+			fmt.Printf("Seeded %d default ignore clauses (manage with 'clauses').\n",
+				len(filter.DefaultIgnoreClauses()))
+		}
+	}
+
+	examples := filter.ExampleRules()
+	fmt.Println("\nExample filter rules (edit/enable later with 'rules'):")
+	for _, r := range examples {
+		fmt.Printf("  - ignore %s %q\n", r.Type, r.Value)
+	}
+	enable := confirm(sc, "Add these example rules (enabled)?", false)
+	for _, r := range examples {
+		r.ID = idx.GenerateID()
+		r.AccountID = accountID
+		r.Source = domain.RuleSourceDefault
+		r.Enabled = enable
+		if err := rr.Add(ctx, r); err != nil {
+			return err
+		}
+	}
+	if enable {
+		fmt.Println("Example rules added (enabled).")
+	} else {
+		fmt.Println("Example rules added (disabled).")
+	}
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
+	"github.com/paperspell/email-assistant/internal/filter"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
@@ -56,7 +57,7 @@ func buildContentModeScheduler(
 	classRepo := repo.NewClassificationRepo(sqlDB)
 	senderRepo := repo.NewSenderRepo(sqlDB)
 	domainRepo := repo.NewDomainRepo(sqlDB)
-	filter := importance.NewFilter(senderRepo, domainRepo)
+	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 
 	sched := New(Config{
 		AccountID:          "test@example.com",
@@ -65,12 +66,16 @@ func buildContentModeScheduler(
 		EmailRepo:          emailRepo,
 		SyncRepo:           syncRepo,
 		ClassificationRepo: classRepo,
-		Filter:             filter,
+		Filter:             importanceFilter,
 		LLMProvider:        llmMock,
 		ContentMode:        contentMode,
 		Provider:           &mockProvider{messages: []email.Message{msg}},
 		Notifier:           &mockNotifier{},
 		Logger:             log.Noop{},
+		RuleRepo:           repo.NewRuleRepo(sqlDB),
+		ClauseRepo:         repo.NewClauseRepo(sqlDB),
+		RuleEngine:         filter.NewEngine(),
+		BaselineFloor:      domain.LevelIgnore,
 	})
 	return sched, syncRepo
 }
@@ -165,7 +170,7 @@ func TestScheduler_AuditEntryWrittenAfterLLMCall(t *testing.T) {
 	auditRepo := repo.NewAuditRepo(sqlDB)
 	senderRepo := repo.NewSenderRepo(sqlDB)
 	domainRepo := repo.NewDomainRepo(sqlDB)
-	filter := importance.NewFilter(senderRepo, domainRepo)
+	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 
 	sched := New(Config{
 		AccountID:          "test@example.com",
@@ -175,12 +180,16 @@ func TestScheduler_AuditEntryWrittenAfterLLMCall(t *testing.T) {
 		SyncRepo:           syncRepo,
 		ClassificationRepo: classRepo,
 		AuditRepo:          auditRepo,
-		Filter:             filter,
+		Filter:             importanceFilter,
 		LLMProvider:        llmMock,
 		ContentMode:        "headers_only",
 		Provider:           &mockProvider{messages: []email.Message{msg}},
 		Notifier:           notifier,
 		Logger:             log.Noop{},
+		RuleRepo:           repo.NewRuleRepo(sqlDB),
+		ClauseRepo:         repo.NewClauseRepo(sqlDB),
+		RuleEngine:         filter.NewEngine(),
+		BaselineFloor:      domain.LevelIgnore,
 	})
 
 	require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
@@ -225,7 +234,7 @@ func TestScheduler_AuditWriteFailure_DoesNotAbortProcessing(t *testing.T) {
 	classRepo := repo.NewClassificationRepo(mainSQLDB)
 	senderRepo := repo.NewSenderRepo(mainSQLDB)
 	domainRepo := repo.NewDomainRepo(mainSQLDB)
-	filter := importance.NewFilter(senderRepo, domainRepo)
+	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 
 	sched := New(Config{
 		AccountID:          "test@example.com",
@@ -235,12 +244,16 @@ func TestScheduler_AuditWriteFailure_DoesNotAbortProcessing(t *testing.T) {
 		SyncRepo:           syncRepo,
 		ClassificationRepo: classRepo,
 		AuditRepo:          auditRepo,
-		Filter:             filter,
+		Filter:             importanceFilter,
 		LLMProvider:        llmMock,
 		ContentMode:        "headers_only",
 		Provider:           &mockProvider{messages: []email.Message{msg}},
 		Notifier:           notifier,
 		Logger:             log.Noop{},
+		RuleRepo:           repo.NewRuleRepo(mainSQLDB),
+		ClauseRepo:         repo.NewClauseRepo(mainSQLDB),
+		RuleEngine:         filter.NewEngine(),
+		BaselineFloor:      domain.LevelIgnore,
 	})
 
 	require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
