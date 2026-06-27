@@ -41,7 +41,7 @@ func (p *Poller) Run(ctx context.Context) error {
 		updates, err := p.Bot.bot.GetUpdatesWithContext(ctx, &gotgbot.GetUpdatesOpts{
 			Offset:         offset,
 			Timeout:        longPollTimeout,
-			AllowedUpdates: []string{"callback_query"},
+			AllowedUpdates: []string{"callback_query", "message"},
 			RequestOpts:    &gotgbot.RequestOpts{Timeout: requestTimeout},
 		})
 		if err != nil {

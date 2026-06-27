@@ -32,26 +32,39 @@ type BotClient interface {
 type Mailbox interface {
 	MarkRead(ctx context.Context, uid uint32) error
 	FetchBody(ctx context.Context, uid uint32) (string, error)
+	MoveToTrash(ctx context.Context, uid uint32) error
 }
 
-// Handler processes incoming Telegram callback queries and dispatches actions.
+// AccountInfo labels a configured account for re-sent (promoted) notifications.
+type AccountInfo struct {
+	Name  string
+	Email string
+}
+
+// Handler processes incoming Telegram callback queries and messages.
 type Handler struct {
 	Bot                BotClient
+	Notifier           Notifier // re-sends promoted emails; nil disables promote
 	EmailRepo          *repo.EmailRepo
 	SenderRepo         *repo.SenderRepo
 	ClassificationRepo *repo.ClassificationRepo
-	Mailboxes          map[string]Mailbox // keyed by account ID
+	DigestRepo         *repo.DigestRepo
+	Mailboxes          map[string]Mailbox     // keyed by account ID
+	Accounts           map[string]AccountInfo // labels for promoted notifications
 	Logger             log.Logger
 }
 
-// Handle dispatches a single Telegram update.
+// Handle dispatches a single Telegram update (callback query or message).
 func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
+	if update.Message != nil {
+		return h.handleMessage(ctx, update.Message)
+	}
 	if update.CallbackQuery == nil {
 		return nil
 	}
 	q := update.CallbackQuery
 
-	action, emailID, ok := parseCallbackData(q.Data)
+	action, arg, ok := parseCallbackData(q.Data)
 	if !ok {
 		h.Logger.Info("ignoring malformed callback data", "data", q.Data)
 		return nil
@@ -61,16 +74,21 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 		h.Logger.Error(err, "callback_query_id", q.Id)
 	}
 
-	e, err := h.EmailRepo.GetByID(ctx, emailID)
+	msgID := q.Message.GetMessageId()
+
+	// Digest bulk buttons carry a digest id, not an email id.
+	if action == "digest_read" || action == "digest_remove" {
+		return h.handleDigestBulk(ctx, action, arg, msgID)
+	}
+
+	e, err := h.EmailRepo.GetByID(ctx, arg)
 	if err != nil {
 		return err
 	}
 	if e == nil {
-		h.Logger.Info("callback references unknown email", "email_id", emailID)
-		return h.Bot.RemoveKeyboard(q.Message.GetMessageId())
+		h.Logger.Info("callback references unknown email", "email_id", arg)
+		return h.Bot.RemoveKeyboard(msgID)
 	}
-
-	msgID := q.Message.GetMessageId()
 
 	switch action {
 	case "handled":
@@ -80,7 +98,7 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 	case "details":
 		return h.handleDetails(ctx, e)
 	default:
-		h.Logger.Info("unknown callback action", "action", action, "email_id", emailID)
+		h.Logger.Info("unknown callback action", "action", action, "email_id", arg)
 		return nil
 	}
 }
@@ -107,6 +125,52 @@ func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email
 	h.markRead(ctx, e)
 	h.Logger.Info("email marked ignored via feedback", "email_id", e.ID, "from", e.FromEmail)
 	return h.Bot.RemoveKeyboard(msgID)
+}
+
+// handleDigestBulk applies Mark read / Remove to the remaining (non-promoted)
+// items of a digest, drops the keyboard, and reports the count.
+func (h *Handler) handleDigestBulk(ctx context.Context, action, digestID string, msgID int64) error {
+	items, err := h.DigestRepo.Items(ctx, digestID)
+	if err != nil {
+		return err
+	}
+	count := 0
+	for _, it := range items {
+		if it.Promoted {
+			continue
+		}
+		e, err := h.EmailRepo.GetByID(ctx, it.EmailID)
+		if err != nil {
+			return err
+		}
+		if e == nil {
+			continue
+		}
+		mb, ok := h.Mailboxes[e.AccountID]
+		if !ok {
+			continue
+		}
+		var actErr error
+		if action == "digest_remove" {
+			actErr = mb.MoveToTrash(ctx, e.MessageUID)
+		} else {
+			actErr = mb.MarkRead(ctx, e.MessageUID)
+		}
+		if actErr != nil {
+			h.Logger.Error(actErr, "email_id", e.ID, "account_id", e.AccountID, "uid", e.MessageUID)
+			continue
+		}
+		count++
+	}
+	if err := h.Bot.RemoveKeyboard(msgID); err != nil {
+		h.Logger.Error(err, "digest_id", digestID)
+	}
+	verb := "marked read"
+	if action == "digest_remove" {
+		verb = "moved to Trash"
+	}
+	h.Logger.Info("digest bulk action", "action", action, "digest_id", digestID, "count", count)
+	return h.Bot.SendFollowUp(ctx, fmt.Sprintf("✓ %d %s.", count, verb))
 }
 
 // markRead flags the email as read in the mailbox. Best-effort: a missing

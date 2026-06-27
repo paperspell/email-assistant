@@ -50,11 +50,19 @@ func (m *mockBotClient) SendFollowUp(_ context.Context, text string) error {
 // --- fake Mailbox ---
 
 type fakeMailbox struct {
-	mu         sync.Mutex
-	markedUIDs []uint32
-	markErr    error
-	body       string
-	bodyErr    error
+	mu          sync.Mutex
+	markedUIDs  []uint32
+	trashedUIDs []uint32
+	markErr     error
+	body        string
+	bodyErr     error
+}
+
+func (f *fakeMailbox) MoveToTrash(_ context.Context, uid uint32) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.trashedUIDs = append(f.trashedUIDs, uid)
+	return nil
 }
 
 func (f *fakeMailbox) MarkRead(_ context.Context, uid uint32) error {

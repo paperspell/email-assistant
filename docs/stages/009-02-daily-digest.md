@@ -1,7 +1,21 @@
 # 009-02-daily-digest.md
 
-Status: Planned
+Status: Implemented
 Version: 0.1
+
+> Implementation notes (deviations from the draft):
+> - `MoveToTrash` was added to `internal/email/provider.go` (the `Provider`'s
+>   actual home, not `email.go`). The IMAP impl resolves Trash via the SPECIAL-USE
+>   `\Trash` attribute, then common names, then falls back to `\Deleted` + expunge.
+> - `digest_time` is a per-account column on `accounts` (global `digest.time` +
+>   `digest.timezone` settings; account value overrides when non-empty).
+> - The MOVE/expunge IMAP glue has no live-server test (no in-memory IMAP harness
+>   in the repo); the digest_remove path is covered at the handler layer via a fake
+>   mailbox.
+> - "Mark read" / "Remove" leave the email's stored status as `ignored`; they act
+>   on the mailbox only (mark `\Seen` / move to Trash) for the non-promoted remainder.
+> - Digest bulk buttons drop the keyboard and post a follow-up line rather than
+>   editing the digest text in place.
 
 # Stage 009-02 — Daily Digest
 

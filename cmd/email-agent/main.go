@@ -16,6 +16,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/digest"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/filter"
@@ -66,7 +67,7 @@ func main() {
 	root.AddCommand(
 		runCmd, versionCmd,
 		newInitCmd(&dbPath), newConfigCmd(&dbPath), newAuditCmd(&dbPath), newAccountCmd(&dbPath),
-		newRulesCmd(&dbPath), newClausesCmd(&dbPath),
+		newRulesCmd(&dbPath), newClausesCmd(&dbPath), newDigestCmd(&dbPath),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -123,6 +124,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	domainRepo := repo.NewDomainRepo(sqlDB)
 	ruleRepo := repo.NewRuleRepo(sqlDB)
 	clauseRepo := repo.NewClauseRepo(sqlDB)
+	digestRepo := repo.NewDigestRepo(sqlDB)
 
 	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 	ruleEngine := filter.NewEngine()
@@ -149,6 +151,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	// Per-account providers are kept so the Telegram handler can act on the
 	// mailbox (mark read, fetch body) through the same provider the scheduler uses.
 	mailboxes := make(map[string]telegram.Mailbox, len(cfg.Accounts))
+	accountInfos := make(map[string]telegram.AccountInfo, len(cfg.Accounts))
 
 	for _, acc := range cfg.Accounts {
 		provider, err := newProvider(gCtx, acc, cfg.OAuth, fetchBody, accountRepo, logger)
@@ -156,6 +159,25 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			return err
 		}
 		mailboxes[acc.ID] = provider
+		accountInfos[acc.ID] = telegram.AccountInfo{Name: acc.Name, Email: acc.Email}
+
+		digestTime := acc.DigestTime
+		if digestTime == "" {
+			digestTime = cfg.Digest.Time
+		}
+		digestSched := digest.New(digest.Config{
+			AccountID:    acc.ID,
+			AccountEmail: acc.Email,
+			Time:         digestTime,
+			Location:     cfg.Digest.Location,
+			EmailRepo:    emailRepo,
+			ClassRepo:    classificationRepo,
+			DigestRepo:   digestRepo,
+			Sender:       bot,
+			Logger:       logger.With("component", "digest", "account", acc.Email),
+		})
+		g.Go(func() error { return digestSched.Start(gCtx) })
+
 		sched := scheduler.New(scheduler.Config{
 			AccountID:           acc.ID,
 			AccountName:         acc.Name,
@@ -183,10 +205,13 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 
 	handler := &telegram.Handler{
 		Bot:                bot,
+		Notifier:           bot,
 		EmailRepo:          emailRepo,
 		SenderRepo:         senderRepo,
 		ClassificationRepo: classificationRepo,
+		DigestRepo:         digestRepo,
 		Mailboxes:          mailboxes,
+		Accounts:           accountInfos,
 		Logger:             logger.With("component", "telegram_handler"),
 	}
 

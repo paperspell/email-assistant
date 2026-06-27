@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `009_poll_interval_default.sql`
+Current schema reflects migrations up to: `012_digests.sql`
 
 ```mermaid
 erDiagram
@@ -18,6 +18,7 @@ erDiagram
         DATETIME received_at
         TEXT language "ISO 639-1 or empty"
         INTEGER telegram_message_id "0 until notification sent"
+        TEXT decided_by "rule:<id> | baseline | llm:low; empty when notified/allowed"
     }
 
     sync_state {
@@ -48,6 +49,7 @@ erDiagram
         TEXT oauth_refresh_token "oauth accounts only"
         TEXT oauth_access_token "refreshable cache"
         DATETIME oauth_token_expiry "nullable"
+        TEXT digest_time "HH:MM override; empty = global digest.time"
     }
 
     classifications {
@@ -64,7 +66,8 @@ erDiagram
 
     senders {
         TEXT id PK "ULID"
-        TEXT email "UNIQUE"
+        TEXT account_id "per-account; UNIQUE(account_id, email)"
+        TEXT email
         INTEGER importance_score
         INTEGER seen_count
         DATETIME updated_at
@@ -72,9 +75,48 @@ erDiagram
 
     domains {
         TEXT id PK "ULID"
-        TEXT domain "UNIQUE"
+        TEXT account_id "per-account; UNIQUE(account_id, domain)"
+        TEXT domain
         INTEGER importance_score
         DATETIME updated_at
+    }
+
+    filter_rules {
+        TEXT id PK "ULID"
+        TEXT account_id "per-account"
+        TEXT action "ignore | allow"
+        TEXT type "sender | domain | list_id | subject"
+        TEXT matcher "exact | substring"
+        TEXT value
+        TEXT scope_kind "subject: 'sender'"
+        TEXT scope_value
+        INTEGER enabled "1 = active"
+        TEXT source "user | default"
+        TEXT created_at
+    }
+
+    llm_clauses {
+        TEXT id PK "ULID"
+        TEXT account_id "per-account"
+        TEXT text "natural-language ignore instruction"
+        INTEGER enabled "1 = injected into prompt"
+        TEXT source "user | default"
+        TEXT created_at
+    }
+
+    digests {
+        TEXT id PK "ULID"
+        TEXT account_id "per-account; UNIQUE(account_id, digest_date)"
+        TEXT digest_date "YYYY-MM-DD (account tz)"
+        INTEGER tg_message_id "maps replies/buttons back"
+        TEXT sent_at
+    }
+
+    digest_items {
+        TEXT digest_id PK "FK digests.id"
+        INTEGER seq_no PK "1-based number shown"
+        TEXT email_id "FK emails.id"
+        INTEGER promoted "1 once kept via /important"
     }
 
     goose_db_version {
@@ -99,4 +141,11 @@ erDiagram
     sync_state ||--|| accounts : "account_id"
     classifications ||--|| emails : "email_id"
     llm_audit_log }o--|| emails : "email_id"
+    filter_rules }o--|| accounts : "account_id"
+    llm_clauses }o--|| accounts : "account_id"
+    senders }o--|| accounts : "account_id"
+    domains }o--|| accounts : "account_id"
+    digests }o--|| accounts : "account_id"
+    digest_items }o--|| digests : "digest_id"
+    digest_items }o--|| emails : "email_id"
 ```

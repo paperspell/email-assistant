@@ -35,6 +35,10 @@ type Provider interface {
 	// fetched on demand without changing its read state. Returns an empty string
 	// when the message has no text body.
 	FetchBody(ctx context.Context, uid uint32) (string, error)
+	// MoveToTrash moves the message with the given UID to the mailbox Trash
+	// (recoverable). It falls back to \Deleted + expunge when no Trash folder is
+	// available. Best-effort with respect to connection state.
+	MoveToTrash(ctx context.Context, uid uint32) error
 	// Close closes the underlying connection.
 	Close() error
 }

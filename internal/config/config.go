@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/paperspell/email-assistant/internal/db/repo"
@@ -14,6 +15,10 @@ import (
 // DefaultPollInterval is the scan interval seeded for new accounts when no
 // global poll.default_interval setting is configured.
 const DefaultPollInterval = 10 * time.Minute
+
+// DefaultDigestTime is the time of day (account timezone) the daily digest is
+// sent when no digest.time setting or per-account override is configured.
+const DefaultDigestTime = "20:00"
 
 // Config holds all application settings loaded from the database.
 type Config struct {
@@ -27,6 +32,16 @@ type Config struct {
 	OAuth        OAuthConfig
 	Poll         PollConfig
 	Filter       FilterConfig
+	Digest       DigestConfig
+}
+
+// DigestConfig controls the daily digest schedule.
+type DigestConfig struct {
+	// Time is the global default send time, "HH:MM" in Location. Accounts may
+	// override it via accounts.digest_time.
+	Time string
+	// Location is the timezone the digest time and day boundaries are computed in.
+	Location *time.Location
 }
 
 // FilterConfig controls the mechanical filtering layer.
@@ -85,6 +100,8 @@ func DefaultValues() map[string]string {
 		KeyContentMode:               d.Content.Mode,
 		KeyPollDefaultInterval:       d.Poll.DefaultInterval.String(),
 		KeyFilterBaselineFloor:       string(d.Filter.BaselineFloor),
+		KeyDigestTime:                d.Digest.Time,
+		KeyDigestTimezone:            "Local",
 	}
 }
 
@@ -102,6 +119,23 @@ func PollIntervalOrDefault(s string) time.Duration {
 	return d
 }
 
+// ParseDigestTime parses an "HH:MM" 24-hour time, returning the hour and minute.
+func ParseDigestTime(s string) (hour, minute int, err error) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("expected HH:MM, got %q", s)
+	}
+	hour, err = strconv.Atoi(parts[0])
+	if err != nil || hour < 0 || hour > 23 {
+		return 0, 0, fmt.Errorf("invalid hour in %q", s)
+	}
+	minute, err = strconv.Atoi(parts[1])
+	if err != nil || minute < 0 || minute > 59 {
+		return 0, 0, fmt.Errorf("invalid minute in %q", s)
+	}
+	return hour, minute, nil
+}
+
 // KnownKeys is the set of all valid settings keys. Account fields are stored in
 // the accounts table (managed via the `account` subcommands), not here.
 var KnownKeys = map[string]bool{
@@ -113,6 +147,8 @@ var KnownKeys = map[string]bool{
 	KeyNotificationMinImportance: true,
 	KeyPollDefaultInterval:       true,
 	KeyFilterBaselineFloor:       true,
+	KeyDigestTime:                true,
+	KeyDigestTimezone:            true,
 	KeyLLMProvider:               true,
 	KeyLLMAnthropicAPIKey:        true,
 	KeyLLMOpenAIAPIKey:           true,
@@ -169,6 +205,10 @@ func defaults() *Config {
 		Filter: FilterConfig{
 			BaselineFloor: domain.LevelMaybe,
 		},
+		Digest: DigestConfig{
+			Time:     DefaultDigestTime,
+			Location: time.Local,
+		},
 	}
 }
 
@@ -195,6 +235,14 @@ func applySettings(cfg *Config, s map[string]string) {
 	}
 	if v := s[KeyFilterBaselineFloor]; v != "" {
 		cfg.Filter.BaselineFloor = domain.ImportanceLevel(v)
+	}
+	if v := s[KeyDigestTime]; v != "" {
+		cfg.Digest.Time = v
+	}
+	if v := s[KeyDigestTimezone]; v != "" {
+		if loc, err := time.LoadLocation(v); err == nil {
+			cfg.Digest.Location = loc
+		}
 	}
 	if v := s[KeyLLMProvider]; v != "" {
 		cfg.LLM.Provider = v
@@ -243,6 +291,9 @@ func (c *Config) validate() error {
 	default:
 		return fmt.Errorf("config: unknown %s %q", KeyFilterBaselineFloor, c.Filter.BaselineFloor)
 	}
+	if _, _, err := ParseDigestTime(c.Digest.Time); err != nil {
+		return fmt.Errorf("config: invalid %s: %w", KeyDigestTime, err)
+	}
 	hasOAuthAccount := false
 	for _, acc := range c.Accounts {
 		if acc.Host == "" || acc.Username == "" {
@@ -264,6 +315,11 @@ func (c *Config) validate() error {
 		}
 		if acc.PollInterval <= 0 {
 			return fmt.Errorf("config: account %q has non-positive poll_interval", acc.Email)
+		}
+		if acc.DigestTime != "" {
+			if _, _, err := ParseDigestTime(acc.DigestTime); err != nil {
+				return fmt.Errorf("config: account %q has invalid digest_time: %w", acc.Email, err)
+			}
 		}
 	}
 	if hasOAuthAccount && (c.OAuth.GoogleClientID == "" || c.OAuth.GoogleClientSecret == "") {

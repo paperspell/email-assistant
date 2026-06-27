@@ -63,6 +63,7 @@ func (m *mockProvider) FetchSince(_ context.Context, lastUID uint32) ([]email.Me
 func (m *mockProvider) MarkRead(_ context.Context, _ uint32) error { return nil }
 
 func (m *mockProvider) FetchBody(_ context.Context, _ uint32) (string, error) { return "", nil }
+func (m *mockProvider) MoveToTrash(_ context.Context, _ uint32) error         { return nil }
 
 func (m *mockProvider) Close() error { return nil }
 

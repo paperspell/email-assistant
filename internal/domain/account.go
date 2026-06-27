@@ -23,6 +23,9 @@ type Account struct {
 	PollInterval time.Duration
 	AuthType     string // "password" or "oauth"
 	Enabled      bool
+	// DigestTime overrides the global digest.time for this account ("HH:MM").
+	// Empty means use the global setting.
+	DigestTime string
 
 	// OAuth credentials, populated when AuthType == AuthOAuth. The refresh token
 	// is the durable secret; the access token and expiry are a refreshable cache.

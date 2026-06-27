@@ -71,6 +71,39 @@ func (r *EmailRepo) GetByAccountAndUID(ctx context.Context, accountID string, ui
 	return scanEmail(row)
 }
 
+// ListIgnoredByAccountInRange returns ignored emails for an account whose
+// received_at falls in [from, to), ordered by received_at. Used to build the
+// daily digest.
+func (r *EmailRepo) ListIgnoredByAccountInRange(
+	ctx context.Context, accountID string, from, to time.Time,
+) ([]domain.Email, error) {
+	const q = `
+		SELECT id, account_id, message_uid, subject, from_email, from_name,
+		       date, status, received_at, language, telegram_message_id, decided_by
+		FROM emails
+		WHERE account_id = ? AND status = ? AND received_at >= ? AND received_at < ?
+		ORDER BY received_at`
+	rows, err := r.db.QueryContext(ctx, q, accountID, string(domain.StatusIgnored),
+		from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, fmt.Errorf("query ignored emails: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var emails []domain.Email
+	for rows.Next() {
+		e, err := scanEmailRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		emails = append(emails, *e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate ignored emails: %w", err)
+	}
+	return emails, nil
+}
+
 // UpdateStatus updates the status of an email by its ID.
 func (r *EmailRepo) UpdateStatus(ctx context.Context, id string, status domain.EmailStatus) error {
 	const q = `UPDATE emails SET status = ? WHERE id = ?`
@@ -126,6 +159,10 @@ func (r *EmailRepo) SetTelegramMessageID(ctx context.Context, emailID string, ms
 }
 
 func scanEmail(row *sql.Row) (*domain.Email, error) {
+	return scanEmailRow(row)
+}
+
+func scanEmailRow(row rowScanner) (*domain.Email, error) {
 	var e domain.Email
 	var dateStr, receivedAtStr, status string
 

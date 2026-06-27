@@ -22,7 +22,7 @@ func NewAccountRepo(db *sql.DB) *AccountRepo {
 
 const accountColumns = `id, name, email, imap_host, imap_port, imap_username,
 	imap_password, tls, poll_interval, auth_type, enabled,
-	oauth_refresh_token, oauth_access_token, oauth_token_expiry`
+	oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time`
 
 // List returns all accounts ordered by creation time.
 func (r *AccountRepo) List(ctx context.Context) ([]domain.Account, error) {
@@ -58,8 +58,8 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 		INSERT INTO accounts
 			(id, name, email, imap_host, imap_port, imap_username,
 			 imap_password, tls, poll_interval, auth_type, enabled,
-			 oauth_refresh_token, oauth_access_token, oauth_token_expiry)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name          = excluded.name,
 			email         = excluded.email,
@@ -73,12 +73,13 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 			enabled       = excluded.enabled,
 			oauth_refresh_token = excluded.oauth_refresh_token,
 			oauth_access_token  = excluded.oauth_access_token,
-			oauth_token_expiry  = excluded.oauth_token_expiry
+			oauth_token_expiry  = excluded.oauth_token_expiry,
+			digest_time         = excluded.digest_time
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		a.ID, a.Name, a.Email, a.Host, a.Port, a.Username,
 		a.Password, boolToInt(a.TLS), a.PollInterval.String(), a.AuthType, boolToInt(a.Enabled),
-		a.OAuthRefreshToken, a.OAuthAccessToken, nullableTime(a.OAuthTokenExpiry),
+		a.OAuthRefreshToken, a.OAuthAccessToken, nullableTime(a.OAuthTokenExpiry), a.DigestTime,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert account: %w", err)
@@ -167,7 +168,7 @@ func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 	if err := s.Scan(
 		&a.ID, &a.Name, &a.Email, &a.Host, &a.Port, &a.Username,
 		&a.Password, &tls, &pollStr, &a.AuthType, &enabled,
-		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry,
+		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry, &a.DigestTime,
 	); err != nil {
 		return nil, err
 	}

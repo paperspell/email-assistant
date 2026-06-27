@@ -64,8 +64,12 @@ type Client struct {
 	client *imapclient.Client
 	// mu serializes IMAP commands over the single connection, which is shared
 	// between the polling goroutine (FetchSince) and on-demand mailbox actions
-	// (MarkRead, FetchBody) triggered from Telegram callbacks.
+	// (MarkRead, FetchBody, MoveToTrash) triggered from Telegram callbacks.
 	mu sync.Mutex
+	// trash caches the resolved Trash mailbox name ("" = none/use \Deleted
+	// fallback); trashResolved guards the one-time lookup. Accessed under mu.
+	trash         string
+	trashResolved bool
 }
 
 // NewClient creates an IMAP Client. Call Connect before using.
@@ -276,6 +280,73 @@ func (c *Client) FetchBody(_ context.Context, uid uint32) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// MoveToTrash moves the message with the given UID to the Trash mailbox. When no
+// Trash mailbox can be resolved, it falls back to setting \Deleted and expunging.
+func (c *Client) MoveToTrash(_ context.Context, uid uint32) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.client == nil {
+		return fmt.Errorf("imap: not connected")
+	}
+
+	set := imaplib.UIDSetNum(imaplib.UID(uid))
+
+	if trash := c.resolveTrash(); trash != "" {
+		_, err := c.client.Move(set, trash).Wait()
+		if err == nil {
+			c.cfg.Logger.Debug("imap moved to trash", "uid", uid, "mailbox", trash)
+			return nil
+		}
+		c.cfg.Logger.Debug("imap move failed, falling back to delete",
+			"uid", uid, "mailbox", trash, "err", err.Error())
+	}
+
+	// Fallback: mark \Deleted and expunge.
+	store := c.client.Store(set, &imaplib.StoreFlags{
+		Op:     imaplib.StoreFlagsAdd,
+		Silent: true,
+		Flags:  []imaplib.Flag{imaplib.FlagDeleted},
+	}, nil)
+	if err := store.Close(); err != nil {
+		return fmt.Errorf("imap mark deleted uid %d: %w", uid, err)
+	}
+	if _, err := c.client.Expunge().Collect(); err != nil {
+		return fmt.Errorf("imap expunge uid %d: %w", uid, err)
+	}
+	c.cfg.Logger.Debug("imap deleted (no trash mailbox)", "uid", uid)
+	return nil
+}
+
+// resolveTrash finds the Trash mailbox once and caches it. It prefers the
+// SPECIAL-USE \Trash attribute, then falls back to common mailbox names. Returns
+// "" when none is found (callers then use the \Deleted fallback). Must hold mu.
+func (c *Client) resolveTrash() string {
+	if c.trashResolved {
+		return c.trash
+	}
+	c.trashResolved = true
+
+	if datas, err := c.client.List("", "*", &imaplib.ListOptions{ReturnSpecialUse: true}).Collect(); err == nil {
+		for _, d := range datas {
+			for _, a := range d.Attrs {
+				if a == imaplib.MailboxAttrTrash {
+					c.trash = d.Mailbox
+					return c.trash
+				}
+			}
+		}
+	}
+	for _, name := range []string{"Trash", "[Gmail]/Trash", "Deleted Items", "Deleted Messages"} {
+		if _, err := c.client.Status(name, &imaplib.StatusOptions{}).Wait(); err == nil {
+			c.trash = name
+			return c.trash
+		}
+	}
+	c.trash = ""
+	return ""
 }
 
 // Close logs out and closes the IMAP connection.

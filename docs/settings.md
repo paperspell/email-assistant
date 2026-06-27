@@ -99,6 +99,19 @@ automatically. If the refresh token is revoked or expires, re-run
 |-----|--------|---------|-------------|
 | `notification.min_importance` | `critical` `important` `maybe` | `important` | Minimum importance level that triggers a Telegram notification |
 
+## Filtering & Digest
+
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `filter.baseline_floor` | `ignore` `maybe` `important` `critical` | `maybe` | Importance level at or below which the baseline scorer drops mail without calling the LLM |
+| `digest.time` | `HH:MM` | `20:00` | Time of day the daily digest of unimportant mail is sent (per-account override via `account` digest time) |
+| `digest.timezone` | IANA name / `Local` / `UTC` | system local | Timezone for the digest send time and day boundaries |
+
+The digest lists LLM-judged-unimportant mail with summaries and collapses
+rule/baseline-dropped junk into a counter. Reply `/important <n,…>` to a digest to
+keep items; the **Mark read** / **Remove** buttons act on the remainder. Reprint a
+past digest with `email-agent digest show <date> [account]`.
+
 ### Importance levels
 
 | Level | Score | Default behaviour |

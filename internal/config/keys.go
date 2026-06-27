@@ -23,6 +23,12 @@ const (
 	// scorer drops mail without invoking the LLM. Default "maybe".
 	KeyFilterBaselineFloor = "filter.baseline_floor"
 
+	// KeyDigestTime is the global daily digest send time ("HH:MM"). Default 20:00.
+	KeyDigestTime = "digest.time"
+	// KeyDigestTimezone is the timezone for digest scheduling (IANA name or
+	// "Local"/"UTC"). Default: system local time.
+	KeyDigestTimezone = "digest.timezone"
+
 	KeyLLMProvider            = "llm.provider"
 	KeyLLMAnthropicAPIKey     = "llm.anthropic.api_key"
 	KeyLLMOpenAIAPIKey        = "llm.openai.api_key"

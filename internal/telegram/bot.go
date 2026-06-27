@@ -48,6 +48,22 @@ func (b *Bot) SendNewEmail(
 	return msg.MessageId, nil
 }
 
+// SendDigest sends the daily digest with bulk Mark read / Remove buttons that
+// carry the digest id. Returns the Telegram message id (used to map replies).
+func (b *Bot) SendDigest(_ context.Context, text, digestID string) (int64, error) {
+	keyboard := gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
+			{Text: "✓ Mark read", CallbackData: "digest_read:" + digestID},
+			{Text: "🗑 Remove", CallbackData: "digest_remove:" + digestID},
+		}},
+	}
+	msg, err := b.bot.SendMessage(b.chatID, text, &gotgbot.SendMessageOpts{ReplyMarkup: keyboard})
+	if err != nil {
+		return 0, fmt.Errorf("telegram send digest: %w", err)
+	}
+	return msg.MessageId, nil
+}
+
 // AnswerCallback dismisses the loading spinner on a callback query.
 // text is shown as a brief pop-up notification to the user; pass "" for silent.
 func (b *Bot) AnswerCallback(queryID, text string) error {
