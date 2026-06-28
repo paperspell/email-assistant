@@ -290,22 +290,11 @@ func seedAccountDefaults(
 		return err
 	}
 	if provider != "" {
-		count, err := cr.Count(ctx, accountID)
+		seeded, err := seedDefaultClausesIfEmpty(ctx, cr, accountID)
 		if err != nil {
 			return err
 		}
-		if count == 0 {
-			for _, text := range filter.DefaultIgnoreClauses() {
-				if err := cr.Add(ctx, domain.LLMClause{
-					ID:        idx.GenerateID(),
-					AccountID: accountID,
-					Text:      text,
-					Enabled:   true,
-					Source:    domain.RuleSourceDefault,
-				}); err != nil {
-					return err
-				}
-			}
+		if seeded {
 			fmt.Printf("Seeded %d default ignore clauses (manage with 'clauses').\n",
 				len(filter.DefaultIgnoreClauses()))
 		}
@@ -330,6 +319,63 @@ func seedAccountDefaults(
 		fmt.Println("Example rules added (enabled).")
 	} else {
 		fmt.Println("Example rules added (disabled).")
+	}
+	return nil
+}
+
+// seedDefaultClausesIfEmpty inserts the Set A default ignore clauses for an
+// account that has none yet. Returns whether it seeded. Shared by account
+// creation and the post-LLM-config reconciliation in init.
+func seedDefaultClausesIfEmpty(ctx context.Context, cr *repo.ClauseRepo, accountID string) (bool, error) {
+	count, err := cr.Count(ctx, accountID)
+	if err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return false, nil
+	}
+	for _, text := range filter.DefaultIgnoreClauses() {
+		if err := cr.Add(ctx, domain.LLMClause{
+			ID:        idx.GenerateID(),
+			AccountID: accountID,
+			Text:      text,
+			Enabled:   true,
+			Source:    domain.RuleSourceDefault,
+		}); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// reconcileDefaultClauses seeds default ignore clauses for every account that has
+// none, provided an LLM provider is configured. Called after the LLM section of
+// init so accounts created before the LLM was enabled still get the defaults
+// (replacing the old migration-time backfill).
+func reconcileDefaultClauses(ctx context.Context, sqlDB *sql.DB) error {
+	sr := repo.NewSettingsRepo(sqlDB)
+	provider, err := sr.Get(ctx, config.KeyLLMProvider)
+	if err != nil || provider == "" {
+		return err
+	}
+	ar := repo.NewAccountRepo(sqlDB)
+	cr := repo.NewClauseRepo(sqlDB)
+	accounts, err := ar.List(ctx)
+	if err != nil {
+		return err
+	}
+	seeded := 0
+	for _, a := range accounts {
+		ok, err := seedDefaultClausesIfEmpty(ctx, cr, a.ID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			seeded++
+		}
+	}
+	if seeded > 0 {
+		fmt.Printf("Seeded default ignore clauses for %d account(s).\n", seeded)
 	}
 	return nil
 }

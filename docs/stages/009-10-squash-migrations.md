@@ -1,7 +1,19 @@
 # 009-10-squash-migrations.md
 
-Status: Planned
+Status: Implemented
 Version: 0.1
+
+> Implementation notes:
+> - `001_initial.sql` was authored from a live `.schema` dump of a freshly-migrated
+>   DB, then folded inline (no trailing-`ALTER` columns) — fidelity preserved.
+> - `accounts.poll_interval` default is set to `10m` in the baseline (the old
+>   column default was a cosmetic `1m`; the app always supplies the value).
+> - The init-ordering gap is closed by `reconcileDefaultClauses`, run at the end of
+>   every `init <section>` (notably `init llm`): it seeds Set A clauses for any
+>   account that has none, once an LLM provider is configured. This replaces the
+>   old migration-010 backfill.
+> - The version-based `migration_backfill_test.go` was replaced by
+>   `migrate_test.go` (`TestMigrate_FreshSchema` / `TestMigrate_Idempotent`).
 
 # Stage 009-10 — Squash Migrations to a Single Baseline
 

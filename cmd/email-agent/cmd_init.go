@@ -201,6 +201,12 @@ func runSectionInit(ctx context.Context, path string, fn sectionFn) error {
 		return err
 	}
 
+	// Enabling the LLM (or any section) is the trigger to backfill default ignore
+	// clauses for accounts that predate the LLM being configured.
+	if err := reconcileDefaultClauses(ctx, sqlDB); err != nil {
+		return err
+	}
+
 	fmt.Println("\nDone.")
 	return nil
 }

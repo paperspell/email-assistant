@@ -327,6 +327,9 @@ Delivered as three independent sub-stages:
 - `docs/stages/009-03-telegram-rule-menus.md` — ignore→menu on live
   notifications (incl. "ignore once"), promote→allow rule, LLM-suggested subject
   pattern, reverse-lookup at promote.
+- `docs/stages/009-10-squash-migrations.md` — pre-release cleanup: the migration
+  history was squashed into a single `001_initial.sql` baseline (goose retained),
+  with all default-data seeding moved into the Go account/init path.
 
 This stage builds on the feedback loop (Stage 4) and LLM classification (Stage 5)
 and complements — never overrides — the [User Control](#user-control) principle:

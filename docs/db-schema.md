@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `013_pending_actions.sql`
+Current schema reflects migrations up to: `001_initial.sql` (squashed baseline)
 
 ```mermaid
 erDiagram
