@@ -23,7 +23,9 @@ const (
 type BotClient interface {
 	AnswerCallback(queryID, text string) error
 	RemoveKeyboard(msgID int64) error
+	EditKeyboard(msgID int64, kb gotgbot.InlineKeyboardMarkup) error
 	SendFollowUp(ctx context.Context, text string) error
+	SendPrompt(ctx context.Context, text string, kb gotgbot.InlineKeyboardMarkup) error
 }
 
 // Mailbox is the subset of email.Provider the Handler needs to act on a mailbox.
@@ -49,6 +51,9 @@ type Handler struct {
 	SenderRepo         *repo.SenderRepo
 	ClassificationRepo *repo.ClassificationRepo
 	DigestRepo         *repo.DigestRepo
+	RuleRepo           *repo.RuleRepo         // nil disables the ignore menu (falls back to plain ignore)
+	ClauseRepo         *repo.ClauseRepo       // for "describe a reason" clauses
+	PendingRepo        *repo.PendingRepo      // multi-step input state
 	Mailboxes          map[string]Mailbox     // keyed by account ID
 	Accounts           map[string]AccountInfo // labels for promoted notifications
 	Logger             log.Logger
@@ -75,10 +80,14 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 	}
 
 	msgID := q.Message.GetMessageId()
+	chatID := q.Message.GetChat().Id
 
-	// Digest bulk buttons carry a digest id, not an email id.
-	if action == "digest_read" || action == "digest_remove" {
+	// Actions whose argument is not an email id are handled before the lookup.
+	switch {
+	case action == "digest_read" || action == "digest_remove":
 		return h.handleDigestBulk(ctx, action, arg, msgID)
+	case strings.HasPrefix(action, "prom_"):
+		return h.handlePromoteFollowup(ctx, action, arg, msgID)
 	}
 
 	e, err := h.EmailRepo.GetByID(ctx, arg)
@@ -90,13 +99,17 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 		return h.Bot.RemoveKeyboard(msgID)
 	}
 
-	switch action {
-	case "handled":
+	switch {
+	case action == "handled":
 		return h.handleHandled(ctx, msgID, e)
-	case "ignore":
+	case action == "ignore":
 		return h.handleIgnore(ctx, msgID, e)
-	case "details":
+	case action == "details":
 		return h.handleDetails(ctx, e)
+	case strings.HasPrefix(action, "ign_"):
+		return h.handleIgnoreLeaf(ctx, action, chatID, msgID, e)
+	case strings.HasPrefix(action, "subj_"):
+		return h.handleSubjectChoice(ctx, action, chatID, msgID, e)
 	default:
 		h.Logger.Info("unknown callback action", "action", action, "email_id", arg)
 		return nil
@@ -115,16 +128,34 @@ func (h *Handler) handleHandled(ctx context.Context, msgID int64, e *domain.Emai
 	return h.Bot.RemoveKeyboard(msgID)
 }
 
+// handleIgnore opens the ignore menu (when rule management is available), or
+// falls back to an immediate plain ignore.
 func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email) error {
+	if h.RuleRepo == nil {
+		if err := h.ignoreWithProvenance(ctx, e, ""); err != nil {
+			return err
+		}
+		h.Logger.Info("email marked ignored via feedback", "email_id", e.ID, "from", e.FromEmail)
+		return h.Bot.RemoveKeyboard(msgID)
+	}
+	return h.Bot.EditKeyboard(msgID, ignoreMenu(e.ID, e.ListID != ""))
+}
+
+// ignoreWithProvenance applies the negative feedback bump, marks the email
+// ignored (recording provenance when given), and flags it read in the mailbox.
+func (h *Handler) ignoreWithProvenance(ctx context.Context, e *domain.Email, decidedBy string) error {
 	if err := h.adjustSenderScore(ctx, e.AccountID, e.FromEmail, -feedbackNegativeDelta); err != nil {
 		return err
 	}
-	if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored); err != nil {
+	if decidedBy == "" {
+		if err := h.EmailRepo.UpdateStatus(ctx, e.ID, domain.StatusIgnored); err != nil {
+			return err
+		}
+	} else if err := h.EmailRepo.UpdateStatusDecidedBy(ctx, e.ID, domain.StatusIgnored, decidedBy); err != nil {
 		return err
 	}
 	h.markRead(ctx, e)
-	h.Logger.Info("email marked ignored via feedback", "email_id", e.ID, "from", e.FromEmail)
-	return h.Bot.RemoveKeyboard(msgID)
+	return nil
 }
 
 // handleDigestBulk applies Mark read / Remove to the remaining (non-promoted)

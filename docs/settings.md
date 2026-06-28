@@ -112,6 +112,13 @@ rule/baseline-dropped junk into a counter. Reply `/important <n,…>` to a diges
 keep items; the **Mark read** / **Remove** buttons act on the remainder. Reprint a
 past digest with `email-agent digest show <date> [account]`.
 
+Tapping **Ignore** on a notification opens a menu to turn the ignore into a
+reusable per-account rule (this sender / domain / mailing list / a suggested,
+editable subject pattern / a free-text "reason" LLM clause) — or ignore just once.
+Promoting a digest item offers to remove the rule that hid it, add an allow
+exception, or always treat that sender as important. Manage rules and clauses with
+`email-agent rules …` and `email-agent clauses …`.
+
 ### Importance levels
 
 | Level | Score | Default behaviour |

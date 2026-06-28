@@ -23,14 +23,16 @@ func NewEmailRepo(db *sql.DB) *EmailRepo {
 // Upsert inserts or replaces an email record.
 func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 	const q = `
-		INSERT INTO emails (id, account_id, message_uid, subject, from_email, from_name, date, status, received_at, language)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO emails
+			(id, account_id, message_uid, subject, from_email, from_name, date, status, received_at, language, list_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (account_id, message_uid) DO UPDATE SET
 			subject    = excluded.subject,
 			from_email = excluded.from_email,
 			from_name  = excluded.from_name,
 			date       = excluded.date,
-			language   = excluded.language
+			language   = excluded.language,
+			list_id    = excluded.list_id
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		e.ID, e.AccountID, e.MessageUID,
@@ -38,7 +40,7 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 		e.Date.UTC().Format(time.RFC3339),
 		string(e.Status),
 		e.ReceivedAt.UTC().Format(time.RFC3339),
-		e.Language,
+		e.Language, e.ListID,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert email: %w", err)
@@ -51,7 +53,7 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 func (r *EmailRepo) GetByID(ctx context.Context, id string) (*domain.Email, error) {
 	const q = `
 		SELECT id, account_id, message_uid, subject, from_email, from_name,
-		       date, status, received_at, language, telegram_message_id, decided_by
+		       date, status, received_at, language, telegram_message_id, decided_by, list_id
 		FROM emails WHERE id = ?
 	`
 	row := r.db.QueryRowContext(ctx, q, id)
@@ -63,7 +65,7 @@ func (r *EmailRepo) GetByID(ctx context.Context, id string) (*domain.Email, erro
 func (r *EmailRepo) GetByAccountAndUID(ctx context.Context, accountID string, uid uint32) (*domain.Email, error) {
 	const q = `
 		SELECT id, account_id, message_uid, subject, from_email, from_name,
-		       date, status, received_at, language, telegram_message_id, decided_by
+		       date, status, received_at, language, telegram_message_id, decided_by, list_id
 		FROM emails
 		WHERE account_id = ? AND message_uid = ?
 	`
@@ -79,7 +81,7 @@ func (r *EmailRepo) ListIgnoredByAccountInRange(
 ) ([]domain.Email, error) {
 	const q = `
 		SELECT id, account_id, message_uid, subject, from_email, from_name,
-		       date, status, received_at, language, telegram_message_id, decided_by
+		       date, status, received_at, language, telegram_message_id, decided_by, list_id
 		FROM emails
 		WHERE account_id = ? AND status = ? AND received_at >= ? AND received_at < ?
 		ORDER BY received_at`
@@ -170,7 +172,7 @@ func scanEmailRow(row rowScanner) (*domain.Email, error) {
 		&e.ID, &e.AccountID, &e.MessageUID,
 		&e.Subject, &e.FromEmail, &e.FromName,
 		&dateStr, &status, &receivedAtStr, &e.Language,
-		&e.TelegramMessageID, &e.DecidedBy,
+		&e.TelegramMessageID, &e.DecidedBy, &e.ListID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

@@ -31,15 +31,8 @@ func NewBot(token string, chatID int64) (*Bot, error) {
 func (b *Bot) SendNewEmail(
 	_ context.Context, e domain.Email, c domain.Classification, accountName, accountEmail string,
 ) (int64, error) {
-	keyboard := gotgbot.InlineKeyboardMarkup{
-		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
-			{Text: "✓ Handled", CallbackData: "handled:" + e.ID},
-			{Text: "✗ Ignore", CallbackData: "ignore:" + e.ID},
-			{Text: "ℹ Details", CallbackData: "details:" + e.ID},
-		}},
-	}
 	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c, accountName, accountEmail), &gotgbot.SendMessageOpts{
-		ReplyMarkup: keyboard,
+		ReplyMarkup: actionKeyboard(e.ID),
 		ParseMode:   "HTML",
 	})
 	if err != nil {
@@ -73,6 +66,26 @@ func (b *Bot) AnswerCallback(queryID, text string) error {
 	}
 	if _, err := b.bot.AnswerCallbackQuery(queryID, opts); err != nil {
 		return fmt.Errorf("answer callback: %w", err)
+	}
+	return nil
+}
+
+// EditKeyboard replaces the inline keyboard of a sent message.
+func (b *Bot) EditKeyboard(msgID int64, kb gotgbot.InlineKeyboardMarkup) error {
+	if _, _, err := b.bot.EditMessageReplyMarkup(&gotgbot.EditMessageReplyMarkupOpts{
+		ChatId:      b.chatID,
+		MessageId:   msgID,
+		ReplyMarkup: kb,
+	}); err != nil {
+		return fmt.Errorf("edit keyboard: %w", err)
+	}
+	return nil
+}
+
+// SendPrompt sends a message with an inline keyboard (used for follow-up choices).
+func (b *Bot) SendPrompt(_ context.Context, text string, kb gotgbot.InlineKeyboardMarkup) error {
+	if _, err := b.bot.SendMessage(b.chatID, text, &gotgbot.SendMessageOpts{ReplyMarkup: kb}); err != nil {
+		return fmt.Errorf("send prompt: %w", err)
 	}
 	return nil
 }

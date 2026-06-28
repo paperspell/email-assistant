@@ -125,6 +125,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	ruleRepo := repo.NewRuleRepo(sqlDB)
 	clauseRepo := repo.NewClauseRepo(sqlDB)
 	digestRepo := repo.NewDigestRepo(sqlDB)
+	pendingRepo := repo.NewPendingRepo(sqlDB)
 
 	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 	ruleEngine := filter.NewEngine()
@@ -210,6 +211,9 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		SenderRepo:         senderRepo,
 		ClassificationRepo: classificationRepo,
 		DigestRepo:         digestRepo,
+		RuleRepo:           ruleRepo,
+		ClauseRepo:         clauseRepo,
+		PendingRepo:        pendingRepo,
 		Mailboxes:          mailboxes,
 		Accounts:           accountInfos,
 		Logger:             logger.With("component", "telegram_handler"),

@@ -2,7 +2,7 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `012_digests.sql`
+Current schema reflects migrations up to: `013_pending_actions.sql`
 
 ```mermaid
 erDiagram
@@ -19,6 +19,16 @@ erDiagram
         TEXT language "ISO 639-1 or empty"
         INTEGER telegram_message_id "0 until notification sent"
         TEXT decided_by "rule:<id> | baseline | llm:low; empty when notified/allowed"
+        TEXT list_id "List-Id header; for the ignore menu's list_id rule"
+    }
+
+    pending_actions {
+        INTEGER chat_id PK "one in-progress interaction per chat"
+        TEXT kind "clause | subject_edit | subject_confirm"
+        TEXT email_id
+        TEXT account_id
+        TEXT payload "suggested subject pattern (subject_confirm)"
+        TEXT created_at
     }
 
     sync_state {

@@ -26,7 +26,8 @@ type Email struct {
 	Status            EmailStatus
 	ReceivedAt        time.Time
 	Language          string
-	TelegramMessageID int64 // 0 until a notification is sent
+	ListID            string // List-Id header; used by the ignore menu's list_id rule
+	TelegramMessageID int64  // 0 until a notification is sent
 
 	// DecidedBy records what filtered an ignored email: "rule:<id>" (Tier-0
 	// rule), "baseline" (score gate), or "llm:low" (LLM judged it unimportant).

@@ -23,7 +23,23 @@ type mockBotClient struct {
 	mu          sync.Mutex
 	answered    []string
 	removedKeys []int64
+	editedKeys  []int64
 	followUps   []string
+	prompts     []string
+}
+
+func (m *mockBotClient) EditKeyboard(msgID int64, _ gotgbot.InlineKeyboardMarkup) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.editedKeys = append(m.editedKeys, msgID)
+	return nil
+}
+
+func (m *mockBotClient) SendPrompt(_ context.Context, text string, _ gotgbot.InlineKeyboardMarkup) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.prompts = append(m.prompts, text)
+	return nil
 }
 
 func (m *mockBotClient) AnswerCallback(queryID, _ string) error {

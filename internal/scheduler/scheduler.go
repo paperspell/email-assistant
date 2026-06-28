@@ -205,6 +205,7 @@ func (s *Scheduler) processMessage(
 		Status:     domain.StatusNew,
 		ReceivedAt: timex.NowUTC(),
 		Language:   lang,
+		ListID:     msg.ListID,
 	}
 
 	if err := s.cfg.EmailRepo.Upsert(ctx, e); err != nil {

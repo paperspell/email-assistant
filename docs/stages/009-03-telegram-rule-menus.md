@@ -1,7 +1,25 @@
 # 009-03-telegram-rule-menus.md
 
-Status: Planned
+Status: Implemented
 Version: 0.1
+
+> Implementation notes (deviations from the draft):
+> - `SuggestSubjectPattern(subject string) string` is **normalisation-based**, not
+>   LLM-backed: the `llm.Provider` interface is classification-only (no general
+>   completion entry point), so expanding every provider was out of scope. The
+>   Edit flow is the correction path. Subject matching now compares a normalised
+>   form (lowercased, punctuation/whitespace collapsed) so multi-word patterns
+>   still match across punctuation.
+> - `List-Id` is now persisted on `emails` (migration 013) so the menu can offer a
+>   `list_id` rule with a real value; the scheduler populates it on ingest.
+> - `pending_actions` gained a `payload` column (holds the suggested subject
+>   pattern for the confirm step).
+> - The Handler gains `RuleRepo`/`ClauseRepo`/`PendingRepo` but **not** an
+>   `llm.Provider` (no LLM suggestion). When `RuleRepo` is nil the Ignore button
+>   keeps its old immediate-ignore behaviour.
+> - Menu interactions edit the notification message's keyboard in place; leaf
+>   outcomes drop the keyboard and post a follow-up line. Promote follow-up is one
+>   prompt per promoted item.
 
 # Stage 009-03 — Telegram Rule Menus
 
