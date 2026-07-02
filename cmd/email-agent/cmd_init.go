@@ -79,25 +79,35 @@ func runFullInit(ctx context.Context, path string) error {
 		fmt.Println("Setting up Email Agent.")
 		fmt.Println()
 
-		var err error
-		hexKey, err = keychain.Generate()
-		if err != nil {
-			return err
-		}
-
-		saved, err := keychain.Save(hexKey)
-		if err != nil {
-			return err
-		}
-		if !saved {
-			fmt.Printf("Keychain is not available. Set %s before running the daemon:\n", keychain.EnvKey)
-			fmt.Printf("  export %s=%s\n", keychain.EnvKey, hexKey)
-			fmt.Print("\nPress Enter after saving the key...")
-			bufio.NewReader(os.Stdin).ReadString('\n') //nolint:errcheck
+		// Reuse an existing encryption key when one is already available (env var
+		// or keychain). This keeps a fresh DB — and any backups encrypted with the
+		// same key — readable after a reset, instead of minting a new key that
+		// would orphan them. To force a new key, clear the keychain entry first.
+		if existing, lerr := keychain.Load(); lerr == nil {
+			hexKey = existing
+			fmt.Println("Reusing existing encryption key.")
 			fmt.Println()
 		} else {
-			fmt.Println("Encryption key saved to system keychain.")
-			fmt.Println()
+			var err error
+			hexKey, err = keychain.Generate()
+			if err != nil {
+				return err
+			}
+
+			saved, err := keychain.Save(hexKey)
+			if err != nil {
+				return err
+			}
+			if !saved {
+				fmt.Printf("Keychain is not available. Set %s before running the daemon:\n", keychain.EnvKey)
+				fmt.Printf("  export %s=%s\n", keychain.EnvKey, hexKey)
+				fmt.Print("\nPress Enter after saving the key...")
+				bufio.NewReader(os.Stdin).ReadString('\n') //nolint:errcheck
+				fmt.Println()
+			} else {
+				fmt.Println("Encryption key saved to system keychain.")
+				fmt.Println()
+			}
 		}
 
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
