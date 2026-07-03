@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/textproto"
 	"strings"
@@ -70,6 +72,9 @@ type Client struct {
 	// fallback); trashResolved guards the one-time lookup. Accessed under mu.
 	trash         string
 	trashResolved bool
+	// reconnectFn, when set, fully replaces reconnect. It is a test seam to
+	// exercise exec's reconnect/retry path without a real server.
+	reconnectFn func() error
 }
 
 // NewClient creates an IMAP Client. Call Connect before using.
@@ -82,6 +87,14 @@ func NewClient(cfg Config) *Client {
 
 // Connect dials the IMAP server, authenticates, and selects INBOX.
 func (c *Client) Connect(_ context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.dial()
+}
+
+// dial establishes a fresh authenticated connection with INBOX selected and
+// stores it on c, replacing any previous client. Callers must hold mu.
+func (c *Client) dial() error {
 	addr := net.JoinHostPort(c.cfg.Host, fmt.Sprintf("%d", c.cfg.Port))
 
 	var (
@@ -112,6 +125,66 @@ func (c *Client) Connect(_ context.Context) error {
 
 	c.client = cl
 	return nil
+}
+
+// exec runs an IMAP operation, transparently reconnecting once if the connection
+// is not established or is dropped mid-session. Reconnecting re-runs
+// authenticate, which refreshes an expired access token — and surfaces a rejected
+// refresh token (via oauth.IsReauthRequired) so the scheduler can alert the user.
+// Callers must hold mu.
+func (c *Client) exec(op func() error) error {
+	if c.client == nil {
+		if err := c.reconnect(); err != nil {
+			return err
+		}
+	}
+
+	err := op()
+	if err == nil || !isConnErr(err) {
+		return err
+	}
+
+	c.cfg.Logger.Debug("imap connection lost, reconnecting", "err", err.Error())
+	if rerr := c.reconnect(); rerr != nil {
+		return rerr
+	}
+	return op()
+}
+
+// reconnect closes any existing connection and dials a fresh one. Must hold mu.
+func (c *Client) reconnect() error {
+	if c.reconnectFn != nil {
+		return c.reconnectFn()
+	}
+	if c.client != nil {
+		c.client.Close() //nolint:errcheck
+		c.client = nil
+	}
+	return c.dial()
+}
+
+// isConnErr reports whether err indicates a broken connection that a reconnect
+// could recover, as opposed to a server-side command error.
+func isConnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	s := err.Error()
+	for _, needle := range []string{
+		"use of closed network connection",
+		"connection reset",
+		"broken pipe",
+		"connection closed",
+		"EOF",
+	} {
+		if strings.Contains(s, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // authenticate logs in with XOAUTH2 when a token source is configured, otherwise
@@ -146,62 +219,66 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.client == nil {
-		return nil, fmt.Errorf("imap: not connected")
-	}
+	var result []email.Message
+	err := c.exec(func() error {
+		result = nil
 
-	startUID := imaplib.UID(lastUID + 1)
-	c.cfg.Logger.Debug("imap uid search", "start_uid", uint32(startUID), "fetch_body", c.cfg.FetchBody)
+		startUID := imaplib.UID(lastUID + 1)
+		c.cfg.Logger.Debug("imap uid search", "start_uid", uint32(startUID), "fetch_body", c.cfg.FetchBody)
 
-	criteria := &imaplib.SearchCriteria{
-		UID: []imaplib.UIDSet{
-			{{Start: startUID, Stop: 0}},
-		},
-	}
+		criteria := &imaplib.SearchCriteria{
+			UID: []imaplib.UIDSet{
+				{{Start: startUID, Stop: 0}},
+			},
+		}
 
-	searchData, err := c.client.UIDSearch(criteria, nil).Wait()
-	if err != nil {
-		return nil, fmt.Errorf("imap uid search: %w", err)
-	}
-
-	uids := searchData.AllUIDs()
-	c.cfg.Logger.Debug("imap uid search result", "found", len(uids))
-	if len(uids) == 0 {
-		return nil, nil
-	}
-
-	uidSet := imaplib.UIDSetNum(uids...)
-
-	// First fetch: envelope + extra headers only.
-	c.cfg.Logger.Debug("imap fetch starting", "uids", len(uids))
-	msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
-		Envelope: true,
-		UID:      true,
-		BodySection: []*imaplib.FetchItemBodySection{
-			extraHeaderSection,
-		},
-	}).Collect()
-	if err != nil {
-		return nil, fmt.Errorf("imap fetch: %w", err)
-	}
-	c.cfg.Logger.Debug("imap fetch complete", "fetched", len(msgs))
-
-	result := parseMessages(msgs, c.cfg.Logger)
-
-	// Second fetch: body text only, in a separate command.
-	if c.cfg.FetchBody && len(result) > 0 {
-		bodies, err := c.fetchBodies(uidSet)
+		searchData, err := c.client.UIDSearch(criteria, nil).Wait()
 		if err != nil {
-			c.cfg.Logger.Warn(fmt.Errorf("body fetch skipped, continuing without body: %w", err))
-		} else {
-			for i := range result {
-				if body, ok := bodies[result[i].UID]; ok {
-					result[i].Body = body
+			return fmt.Errorf("imap uid search: %w", err)
+		}
+
+		uids := searchData.AllUIDs()
+		c.cfg.Logger.Debug("imap uid search result", "found", len(uids))
+		if len(uids) == 0 {
+			return nil
+		}
+
+		uidSet := imaplib.UIDSetNum(uids...)
+
+		// First fetch: envelope + extra headers only.
+		c.cfg.Logger.Debug("imap fetch starting", "uids", len(uids))
+		msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
+			Envelope: true,
+			UID:      true,
+			BodySection: []*imaplib.FetchItemBodySection{
+				extraHeaderSection,
+			},
+		}).Collect()
+		if err != nil {
+			return fmt.Errorf("imap fetch: %w", err)
+		}
+		c.cfg.Logger.Debug("imap fetch complete", "fetched", len(msgs))
+
+		result = parseMessages(msgs, c.cfg.Logger)
+
+		// Second fetch: body text only, in a separate command.
+		if c.cfg.FetchBody && len(result) > 0 {
+			bodies, berr := c.fetchBodies(uidSet)
+			if berr != nil {
+				c.cfg.Logger.Warn(fmt.Errorf("body fetch skipped, continuing without body: %w", berr))
+			} else {
+				for i := range result {
+					if body, ok := bodies[result[i].UID]; ok {
+						result[i].Body = body
+					}
 				}
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	return result, nil
 }
 
@@ -237,21 +314,19 @@ func (c *Client) MarkRead(_ context.Context, uid uint32) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.client == nil {
-		return fmt.Errorf("imap: not connected")
-	}
-
-	set := imaplib.UIDSetNum(imaplib.UID(uid))
-	cmd := c.client.Store(set, &imaplib.StoreFlags{
-		Op:     imaplib.StoreFlagsAdd,
-		Silent: true, // we don't need the updated flags echoed back
-		Flags:  []imaplib.Flag{imaplib.FlagSeen},
-	}, nil) // a UIDSet makes this a UID STORE
-	if err := cmd.Close(); err != nil {
-		return fmt.Errorf("imap mark read uid %d: %w", uid, err)
-	}
-	c.cfg.Logger.Debug("imap marked read", "uid", uid)
-	return nil
+	return c.exec(func() error {
+		set := imaplib.UIDSetNum(imaplib.UID(uid))
+		cmd := c.client.Store(set, &imaplib.StoreFlags{
+			Op:     imaplib.StoreFlagsAdd,
+			Silent: true, // we don't need the updated flags echoed back
+			Flags:  []imaplib.Flag{imaplib.FlagSeen},
+		}, nil) // a UIDSet makes this a UID STORE
+		if err := cmd.Close(); err != nil {
+			return fmt.Errorf("imap mark read uid %d: %w", uid, err)
+		}
+		c.cfg.Logger.Debug("imap marked read", "uid", uid)
+		return nil
+	})
 }
 
 // FetchBody returns the plain-text body of the message with the given UID,
@@ -261,25 +336,26 @@ func (c *Client) FetchBody(_ context.Context, uid uint32) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.client == nil {
-		return "", fmt.Errorf("imap: not connected")
-	}
-
-	set := imaplib.UIDSetNum(imaplib.UID(uid))
-	msgs, err := c.client.Fetch(set, &imaplib.FetchOptions{
-		UID:         true,
-		BodySection: []*imaplib.FetchItemBodySection{peekBodySection},
-	}).Collect()
-	if err != nil {
-		return "", fmt.Errorf("imap fetch body uid %d: %w", uid, err)
-	}
-
-	for _, m := range msgs {
-		if bodyBytes := m.FindBodySection(peekBodySection); len(bodyBytes) > 0 {
-			return truncate(stripHTML(string(bodyBytes)), maxBodyLen), nil
+	var body string
+	err := c.exec(func() error {
+		body = ""
+		set := imaplib.UIDSetNum(imaplib.UID(uid))
+		msgs, err := c.client.Fetch(set, &imaplib.FetchOptions{
+			UID:         true,
+			BodySection: []*imaplib.FetchItemBodySection{peekBodySection},
+		}).Collect()
+		if err != nil {
+			return fmt.Errorf("imap fetch body uid %d: %w", uid, err)
 		}
-	}
-	return "", nil
+		for _, m := range msgs {
+			if bodyBytes := m.FindBodySection(peekBodySection); len(bodyBytes) > 0 {
+				body = truncate(stripHTML(string(bodyBytes)), maxBodyLen)
+				return nil
+			}
+		}
+		return nil
+	})
+	return body, err
 }
 
 // MoveToTrash moves the message with the given UID to the Trash mailbox. When no
@@ -288,36 +364,37 @@ func (c *Client) MoveToTrash(_ context.Context, uid uint32) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.client == nil {
-		return fmt.Errorf("imap: not connected")
-	}
+	return c.exec(func() error {
+		set := imaplib.UIDSetNum(imaplib.UID(uid))
 
-	set := imaplib.UIDSetNum(imaplib.UID(uid))
-
-	if trash := c.resolveTrash(); trash != "" {
-		_, err := c.client.Move(set, trash).Wait()
-		if err == nil {
-			c.cfg.Logger.Debug("imap moved to trash", "uid", uid, "mailbox", trash)
-			return nil
+		if trash := c.resolveTrash(); trash != "" {
+			_, err := c.client.Move(set, trash).Wait()
+			if err == nil {
+				c.cfg.Logger.Debug("imap moved to trash", "uid", uid, "mailbox", trash)
+				return nil
+			}
+			if isConnErr(err) {
+				return fmt.Errorf("imap move uid %d: %w", uid, err) // let exec reconnect and retry
+			}
+			c.cfg.Logger.Debug("imap move failed, falling back to delete",
+				"uid", uid, "mailbox", trash, "err", err.Error())
 		}
-		c.cfg.Logger.Debug("imap move failed, falling back to delete",
-			"uid", uid, "mailbox", trash, "err", err.Error())
-	}
 
-	// Fallback: mark \Deleted and expunge.
-	store := c.client.Store(set, &imaplib.StoreFlags{
-		Op:     imaplib.StoreFlagsAdd,
-		Silent: true,
-		Flags:  []imaplib.Flag{imaplib.FlagDeleted},
-	}, nil)
-	if err := store.Close(); err != nil {
-		return fmt.Errorf("imap mark deleted uid %d: %w", uid, err)
-	}
-	if _, err := c.client.Expunge().Collect(); err != nil {
-		return fmt.Errorf("imap expunge uid %d: %w", uid, err)
-	}
-	c.cfg.Logger.Debug("imap deleted (no trash mailbox)", "uid", uid)
-	return nil
+		// Fallback: mark \Deleted and expunge.
+		store := c.client.Store(set, &imaplib.StoreFlags{
+			Op:     imaplib.StoreFlagsAdd,
+			Silent: true,
+			Flags:  []imaplib.Flag{imaplib.FlagDeleted},
+		}, nil)
+		if err := store.Close(); err != nil {
+			return fmt.Errorf("imap mark deleted uid %d: %w", uid, err)
+		}
+		if _, err := c.client.Expunge().Collect(); err != nil {
+			return fmt.Errorf("imap expunge uid %d: %w", uid, err)
+		}
+		c.cfg.Logger.Debug("imap deleted (no trash mailbox)", "uid", uid)
+		return nil
+	})
 }
 
 // resolveTrash finds the Trash mailbox once and caches it. It prefers the

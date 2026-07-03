@@ -63,7 +63,9 @@ daemon logs in with XOAUTH2, refreshing access tokens automatically.
 - When a refresh token is revoked/expired, the daemon **sends a Telegram alert**
   naming the account with re-authorization instructions, and logs the same error.
   It does not silently retry forever. The alert is sent once per outage (not on
-  every poll). To recover:
+  every poll). The IMAP client auto-reconnects on a dropped connection, so an
+  expired token is detected mid-session (on the next reconnect) as well as at
+  startup — you don't have to wait for a manual restart to be notified. To recover:
   1. On the machine running the daemon: `email-agent account edit <email>` and
      answer **y** to "Re-authorize with Google now?" (a browser opens for consent).
   2. Restart the daemon (`email-agent run`) — the running process caches the old
