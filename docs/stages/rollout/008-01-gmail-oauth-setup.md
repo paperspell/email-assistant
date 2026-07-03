@@ -55,11 +55,19 @@ daemon logs in with XOAUTH2, refreshing access tokens automatically.
 
 - **Testing mode expires refresh tokens after ~7 days.** While the consent screen
   is in "Testing", Google invalidates refresh tokens weekly, so you'll need to
-  re-run `email-agent account add` to re-authorize. To avoid this you must
-  **publish** the app, which for the restricted `https://mail.google.com/` scope
-  triggers Google's verification process. (Workspace **Internal** apps are not
-  subject to this.)
+  re-authorize. To avoid this you must **publish** the app, which for the
+  restricted `https://mail.google.com/` scope triggers Google's verification
+  process. (Workspace **Internal** apps are not subject to this.)
 - The **Client secret** for a Desktop-app client is not truly confidential — this
   is expected and normal for installed apps.
-- When a refresh token is revoked/expired, the daemon logs a clear error telling
-  you to re-authorize; it does not silently retry forever.
+- When a refresh token is revoked/expired, the daemon **sends a Telegram alert**
+  naming the account with re-authorization instructions, and logs the same error.
+  It does not silently retry forever. The alert is sent once per outage (not on
+  every poll). To recover:
+  1. On the machine running the daemon: `email-agent account edit <email>` and
+     answer **y** to "Re-authorize with Google now?" (a browser opens for consent).
+  2. Restart the daemon (`email-agent run`) — the running process caches the old
+     token in memory, so the new one only takes effect after a restart.
+
+  A mailbox whose token has expired at daemon startup is skipped (with the alert)
+  rather than taking the whole daemon down; other accounts keep polling.

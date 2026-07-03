@@ -195,6 +195,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
 			Notifier:            bot,
+			Alerter:             bot,
 			Logger:              logger.With("component", "scheduler", "account", acc.Email),
 			RuleRepo:            ruleRepo,
 			ClauseRepo:          clauseRepo,

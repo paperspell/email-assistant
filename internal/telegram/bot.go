@@ -109,6 +109,15 @@ func (b *Bot) SendFollowUp(_ context.Context, text string) error {
 	return nil
 }
 
+// SendAlert sends an operational alert (e.g. an account that needs OAuth
+// re-authorization) as an HTML-formatted message in the configured chat.
+func (b *Bot) SendAlert(_ context.Context, text string) error {
+	if _, err := b.bot.SendMessage(b.chatID, text, &gotgbot.SendMessageOpts{ParseMode: "HTML"}); err != nil {
+		return fmt.Errorf("send alert: %w", err)
+	}
+	return nil
+}
+
 func formatMessage(e domain.Email, c domain.Classification, accountName, accountEmail string) string {
 	from := e.FromEmail
 	if e.FromName != "" {

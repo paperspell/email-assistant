@@ -3,11 +3,13 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 
+	"github.com/paperspell/email-assistant/internal/auth/oauth"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
@@ -39,6 +41,7 @@ type Config struct {
 	ScoreDivergenceWarn int
 	Provider            email.Provider
 	Notifier            telegram.Notifier
+	Alerter             Alerter // operational alerts (e.g. re-auth needed); nil disables them
 	Logger              log.Logger
 
 	// Mechanical filtering layer (Stage 9).
@@ -48,10 +51,20 @@ type Config struct {
 	BaselineFloor domain.ImportanceLevel // baseline level at/below which the LLM is skipped
 }
 
+// Alerter delivers operational alerts to the user, distinct from new-email
+// notifications — for example, an account whose OAuth token needs re-authorization.
+type Alerter interface {
+	SendAlert(ctx context.Context, text string) error
+}
+
 // Scheduler polls an IMAP account and sends Telegram notifications for new emails.
 type Scheduler struct {
 	cfg    Config
 	stopCh chan struct{}
+	// reauthAlerted is true once a re-authorization alert has been sent for the
+	// current outage, so the alert fires once rather than every poll. It resets
+	// after a successful poll. Accessed only from the single polling goroutine.
+	reauthAlerted bool
 }
 
 // New creates a Scheduler. Call Start to begin polling.
@@ -67,6 +80,14 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	s.cfg.Logger.Info("scheduler starting", "account_id", s.cfg.AccountID, "poll_interval", s.cfg.PollInterval)
 
 	if err := s.cfg.Provider.Connect(ctx); err != nil {
+		if oauth.IsReauthRequired(err) {
+			// One expired mailbox must not take down the whole daemon (and, under a
+			// restart-looping service, spam the alert). Notify once, then stop polling
+			// this account until it is re-authorized and the daemon is restarted.
+			s.cfg.Logger.Error(err, "account_id", s.cfg.AccountID)
+			s.alertReauthIfNeeded(ctx, err)
+			return nil
+		}
 		return err
 	}
 
@@ -109,7 +130,45 @@ func (s *Scheduler) pollWithBackoff(ctx context.Context) {
 
 	if err != nil {
 		s.cfg.Logger.Error(err, "account_id", s.cfg.AccountID)
+		s.alertReauthIfNeeded(ctx, err)
+		return
 	}
+	// A successful poll clears the re-auth state so a future expiry alerts again.
+	s.reauthAlerted = false
+}
+
+// alertReauthIfNeeded sends a one-time Telegram alert when err indicates the
+// account's OAuth refresh token was rejected and the user must re-authorize.
+// It de-duplicates via reauthAlerted so the alert fires once per outage rather
+// than on every poll.
+func (s *Scheduler) alertReauthIfNeeded(ctx context.Context, err error) {
+	if err == nil || !oauth.IsReauthRequired(err) || s.reauthAlerted || s.cfg.Alerter == nil {
+		return
+	}
+	if aerr := s.cfg.Alerter.SendAlert(ctx, s.reauthAlertText()); aerr != nil {
+		s.cfg.Logger.Error(fmt.Errorf("send re-auth alert: %w", aerr), "account_id", s.cfg.AccountID)
+		return
+	}
+	s.reauthAlerted = true
+	s.cfg.Logger.Info("sent re-auth alert to Telegram", "account_id", s.cfg.AccountID)
+}
+
+// reauthAlertText builds the HTML-formatted re-authorization instructions.
+func (s *Scheduler) reauthAlertText() string {
+	label := s.cfg.AccountEmail
+	if s.cfg.AccountName != "" && s.cfg.AccountName != s.cfg.AccountEmail {
+		label = fmt.Sprintf("%s (%s)", s.cfg.AccountName, s.cfg.AccountEmail)
+	}
+	email := html.EscapeString(s.cfg.AccountEmail)
+	return "⚠️ <b>Email authorization expired</b>\n\n" +
+		"Account: " + html.EscapeString(label) + "\n\n" +
+		"The Google sign-in for this mailbox has expired, so I can no longer check it. " +
+		"New emails from this account won't be delivered until you re-authorize.\n\n" +
+		"<b>To fix, on the machine running email-agent:</b>\n" +
+		"1. Run <code>email-agent account edit " + email + "</code>\n" +
+		"2. Answer <b>y</b> to \"Re-authorize with Google now?\" and complete the Google consent in the browser.\n" +
+		"3. Restart the daemon: <code>email-agent run</code>\n\n" +
+		"<i>Gmail in \"Testing\" mode expires this roughly every 7 days.</i>"
 }
 
 func (s *Scheduler) poll(ctx context.Context) error {
