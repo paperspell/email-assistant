@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -179,25 +180,71 @@ func newInitSectionCmd(dbPath *string, use, short string, fn sectionFn) *cobra.C
 	}
 }
 
-func runSectionInit(ctx context.Context, path string, fn sectionFn) error {
-	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("database not found at %s — run 'email-agent init' first", path)
-	}
+// openInitDB opens the database for a section command, creating it (with a
+// generated or reused encryption key) when it does not exist yet, then runs
+// migrations. This lets `init oauth`/`init llm`/`init telegram`/etc. bootstrap a
+// fresh install without first running the full `init` wizard. Caller closes the DB.
+func openInitDB(ctx context.Context, path string) (*sql.DB, error) {
+	_, statErr := os.Stat(path)
+	dbExists := statErr == nil
 
-	hexKey, err := keychain.Load()
-	if err != nil {
-		return err
+	var hexKey string
+	if dbExists {
+		k, err := keychain.Load()
+		if err != nil {
+			return nil, err
+		}
+		hexKey = k
+	} else {
+		// New DB: reuse an existing key if one is available so backups stay
+		// readable; otherwise generate and persist a fresh one.
+		if existing, lerr := keychain.Load(); lerr == nil {
+			hexKey = existing
+			fmt.Println("Reusing existing encryption key.")
+			fmt.Println()
+		} else {
+			k, err := keychain.Generate()
+			if err != nil {
+				return nil, err
+			}
+			saved, err := keychain.Save(k)
+			if err != nil {
+				return nil, err
+			}
+			if !saved {
+				fmt.Printf("Keychain is not available. Set %s before running the daemon:\n", keychain.EnvKey)
+				fmt.Printf("  export %s=%s\n", keychain.EnvKey, k)
+				fmt.Print("\nPress Enter after saving the key...")
+				bufio.NewReader(os.Stdin).ReadString('\n') //nolint:errcheck
+				fmt.Println()
+			} else {
+				fmt.Println("Encryption key saved to system keychain.")
+				fmt.Println()
+			}
+			hexKey = k
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, fmt.Errorf("create database directory: %w", err)
+		}
 	}
 
 	sqlDB, err := db.Open(path, hexKey)
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return nil, fmt.Errorf("open database: %w", err)
 	}
-	defer sqlDB.Close() //nolint:errcheck
-
 	if err := db.Migrate(ctx, sqlDB); err != nil {
+		sqlDB.Close() //nolint:errcheck
+		return nil, err
+	}
+	return sqlDB, nil
+}
+
+func runSectionInit(ctx context.Context, path string, fn sectionFn) error {
+	sqlDB, err := openInitDB(ctx, path)
+	if err != nil {
 		return err
 	}
+	defer sqlDB.Close() //nolint:errcheck
 
 	r := repo.NewSettingsRepo(sqlDB)
 	current, err := r.GetAll(ctx)

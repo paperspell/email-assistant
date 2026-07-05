@@ -3,13 +3,15 @@
 # reset-and-setup.sh — wipe the local email-agent database and bootstrap a fresh
 # install, configured for one or more Gmail accounts (OAuth by default).
 #
-# It orchestrates the ordering that the interactive `init` flow requires:
-#   1. `init`           creates the encrypted DB + keychain key (first oauth
-#                       account stops at "no Google OAuth client configured" —
-#                       that is EXPECTED; the DB is created regardless).
-#   2. `init oauth`     stores the Google Client ID + secret.
-#   3. `init telegram`  / `init notifications` / `init llm` finish the sections.
-#   4. `account add`    once per mailbox (browser consent each time).
+# It configures global settings first, then adds mailboxes:
+#   1. `init oauth`        stores the Google Client ID + secret (creates the DB).
+#   2. `init llm`          picks the LLM provider + settings (Enter to disable).
+#   3. `init telegram`     bot token + chat id.
+#   4. `init notifications` min importance.
+#   5. `account add`       once per mailbox (browser consent each time).
+#
+# Section commands create the encrypted DB on first use, so OAuth/LLM are set up
+# before any mailbox — no need to run the full `init` wizard first.
 #
 # Each `email-agent` command below is itself interactive — the script only
 # enforces order and pauses between steps.
@@ -69,10 +71,11 @@ agent() { "$BIN" --db "$DB_PATH" "$@"; }
 
 info()  { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!  \033[0m %s\n' "$*"; }
-pause() { read -r -p "$(printf '\033[35m?  %s \033[0m' "$1")" _; }
+pause() { read -r -p "$(printf '\033[35m?  %s \033[0m' "$1")" _ || true; }
 confirm() {
   local ans
-  read -r -p "$(printf '\033[35m?  %s [y/N] \033[0m' "$1")" ans
+  read -r -p "$(printf '\033[35m?  %s [y/N] \033[0m' "$1")" ans || true
+  ans="${ans//$'\r'/}" # some terminals send a trailing CR that read keeps
   [[ "$ans" == "y" || "$ans" == "Y" || "$ans" == "yes" ]]
 }
 
@@ -136,20 +139,19 @@ OAuth, you can add those accounts with `account add` and skip `init oauth`.
 EOF
 pause "Press Enter once you have your Client ID + secret ready (or to continue with App Passwords)..."
 
-# --- 4. create the DB via full init -------------------------------------------
-
-info "Running 'init' to create the encrypted DB."
-warn "For an OAuth first account, init stops at \"no Google OAuth client configured\"."
-warn "That is EXPECTED — the database is created anyway. We fix it in the next step."
-agent init || true
-
-# --- 5. OAuth client ----------------------------------------------------------
+# --- 4. OAuth client (creates the DB on first use) ----------------------------
 
 if confirm "Configure the Google OAuth client now (needed for Gmail OAuth)?"; then
+  info "Configuring Google OAuth client..."
   agent init oauth
 fi
 
-# --- 6. finish the remaining sections -----------------------------------------
+# --- 5. LLM classification ----------------------------------------------------
+
+info "Configuring LLM classification (press Enter at the provider prompt to disable)..."
+agent init llm
+
+# --- 6. Telegram + notifications ----------------------------------------------
 
 info "Configuring Telegram..."
 agent init telegram
@@ -157,14 +159,10 @@ agent init telegram
 info "Configuring notifications..."
 agent init notifications
 
-if confirm "Enable LLM classification (init llm)?"; then
-  agent init llm
-fi
-
 # --- 7. add mailboxes ---------------------------------------------------------
 
-info "Now add your Gmail mailboxes. A browser opens for consent on each OAuth account."
-while confirm "Add a mailbox now?"; do
+info "Now add your mailboxes. A browser opens for consent on each OAuth (Gmail) account."
+while confirm "Add a new mailbox now?"; do
   agent account add
 done
 

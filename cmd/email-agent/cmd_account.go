@@ -199,6 +199,10 @@ func addOrEditAccount(
 	}
 	if existing != nil {
 		cur = *existing
+	} else if oauthClientConfigured(ctx, sr) {
+		// A configured Google client means this is a Gmail/OAuth setup — default
+		// new accounts to oauth so the user can just press Enter.
+		cur.AuthType = domain.AuthOAuth
 	}
 
 	fmt.Println("Email Account")
@@ -206,24 +210,41 @@ func addOrEditAccount(
 	if authType != domain.AuthPassword && authType != domain.AuthOAuth {
 		return fmt.Errorf("auth type must be %q or %q", domain.AuthPassword, domain.AuthOAuth)
 	}
-	// Gmail OAuth has well-known IMAP defaults.
-	if authType == domain.AuthOAuth && cur.Host == "" {
-		cur.Host = "imap.gmail.com"
+
+	// Email identifies the account, so ask it first; other fields default from it.
+	email := promptText(sc, "  Email", cur.Email)
+
+	name := cur.Name
+	if name == "" {
+		name = email
+	}
+	host, username := cur.Host, cur.Username
+	port, tls := cur.Port, cur.TLS
+
+	if authType == domain.AuthOAuth {
+		// Gmail OAuth has well-known IMAP settings — no need to prompt for them.
+		if host == "" {
+			host = "imap.gmail.com"
+		}
+		if username == "" {
+			username = email
+		}
+	} else {
+		// Password IMAP (any provider): ask the connection details.
+		name = promptText(sc, "  Name", name)
+		host = promptText(sc, "  Host", host)
+		p, perr := promptInt(sc, "  Port", port)
+		if perr != nil {
+			return perr
+		}
+		port = p
+		if username == "" {
+			username = email
+		}
+		username = promptText(sc, "  Username", username)
+		tls = promptText(sc, "  TLS", strconv.FormatBool(tls)) == "true"
 	}
 
-	name := promptText(sc, "  Name", cur.Name)
-	email := promptText(sc, "  Email", cur.Email)
-	host := promptText(sc, "  Host", cur.Host)
-	port, err := promptInt(sc, "  Port", cur.Port)
-	if err != nil {
-		return err
-	}
-	username := cur.Username
-	if username == "" {
-		username = email
-	}
-	username = promptText(sc, "  Username", username)
-	tls := promptText(sc, "  TLS", strconv.FormatBool(cur.TLS)) == "true"
 	poll, err := promptDuration(sc, "  Poll interval", cur.PollInterval)
 	if err != nil {
 		return err
@@ -276,6 +297,17 @@ func addOrEditAccount(
 		}
 	}
 	return nil
+}
+
+// oauthClientConfigured reports whether a Google OAuth client (client id +
+// secret) has been configured, which is the signal to default new accounts to
+// oauth instead of password.
+func oauthClientConfigured(ctx context.Context, sr *repo.SettingsRepo) bool {
+	all, err := sr.GetAll(ctx)
+	if err != nil {
+		return false
+	}
+	return all[config.KeyOAuthGoogleClientID] != "" && all[config.KeyOAuthGoogleClientSecret] != ""
 }
 
 // seedAccountDefaults seeds the Set A default ignore clauses (when an LLM provider
