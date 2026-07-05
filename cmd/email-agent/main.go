@@ -259,13 +259,30 @@ func newProvider(
 	case domain.AuthOAuth:
 		oc := oauth.GoogleConfig(oauthCfg.GoogleClientID, oauthCfg.GoogleClientSecret)
 		accID := acc.ID
-		ts := oauth.TokenSource(ctx, oc, oauth.Tokens{
+		// reload re-reads the account's tokens from the DB so a re-authorization
+		// performed by `account edit` while the daemon runs is picked up on the
+		// next refresh, without a restart (stage 008-04, phase 1).
+		reload := func() (oauth.Tokens, error) {
+			a, err := accountRepo.Get(ctx, accID)
+			if err != nil {
+				return oauth.Tokens{}, err
+			}
+			if a == nil {
+				return oauth.Tokens{}, fmt.Errorf("account %q not found", accID)
+			}
+			return oauth.Tokens{
+				AccessToken:  a.OAuthAccessToken,
+				RefreshToken: a.OAuthRefreshToken,
+				Expiry:       a.OAuthTokenExpiry,
+			}, nil
+		}
+		ts := oauth.ReloadingTokenSource(ctx, oc, oauth.Tokens{
 			AccessToken:  acc.OAuthAccessToken,
 			RefreshToken: acc.OAuthRefreshToken,
 			Expiry:       acc.OAuthTokenExpiry,
 		}, func(t oauth.Tokens) error {
 			return accountRepo.UpdateTokens(ctx, accID, t.AccessToken, t.RefreshToken, t.Expiry)
-		})
+		}, reload)
 		return imapmail.NewClient(imapmail.Config{
 			Host:        acc.Host,
 			Port:        acc.Port,

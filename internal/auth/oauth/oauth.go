@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -163,6 +164,68 @@ func (p *persistingSource) Token() (*oauth2.Token, error) {
 		}
 	}
 	return tok, nil
+}
+
+// ReloadFunc returns the tokens currently stored for an account. It lets a
+// running daemon pick up a re-authorization performed by the CLI process.
+type ReloadFunc func() (Tokens, error)
+
+// ReloadingTokenSource wraps the refreshing, self-persisting TokenSource so the
+// daemon can recover from a re-authorization without a restart. When the cached
+// refresh token is rejected (invalid_grant), it reloads tokens from storage; if
+// the stored refresh token has changed (the user re-authorized), it rebuilds the
+// inner source with the new tokens and retries once.
+func ReloadingTokenSource(
+	ctx context.Context, cfg *oauth2.Config, t Tokens,
+	persist func(Tokens) error, reload ReloadFunc,
+) oauth2.TokenSource {
+	build := func(tk Tokens) oauth2.TokenSource {
+		return TokenSource(ctx, cfg, tk, persist)
+	}
+	return newReloadingSource(t, build, reload)
+}
+
+// newReloadingSource is the constructor used by tests, with the inner-source
+// builder injected so the reload/retry logic can be exercised without a network.
+func newReloadingSource(
+	t Tokens, build func(Tokens) oauth2.TokenSource, reload ReloadFunc,
+) *reloadingSource {
+	return &reloadingSource{inner: build(t), build: build, current: t, reload: reload}
+}
+
+type reloadingSource struct {
+	mu      sync.Mutex
+	inner   oauth2.TokenSource
+	build   func(Tokens) oauth2.TokenSource
+	current Tokens
+	reload  ReloadFunc
+}
+
+func (r *reloadingSource) Token() (*oauth2.Token, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	tok, err := r.inner.Token()
+	if err == nil {
+		return tok, nil
+	}
+
+	// Only a rejected refresh token is recoverable by reloading; anything else
+	// (network, transient) falls through and is returned as-is. When storage holds
+	// a different refresh token (the user re-authorized), rebuild the inner source
+	// with it and retry once. current advances even if the retry fails, so we do
+	// not rebuild again until storage changes further.
+	if IsReauthRequired(err) && r.reload != nil {
+		if stored, rerr := r.reload(); rerr == nil &&
+			stored.RefreshToken != "" && stored.RefreshToken != r.current.RefreshToken {
+			r.inner = r.build(stored)
+			r.current = stored
+			if tok, err = r.inner.Token(); err == nil {
+				return tok, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("oauth reloading token: %w", err)
 }
 
 // IsReauthRequired reports whether err indicates the refresh token is no longer

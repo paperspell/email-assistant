@@ -53,6 +53,8 @@ docs/                Architecture, guidelines, plans
 | [docs/stages/001-01-notification-foundation.md](docs/stages/001-01-notification-foundation.md) | Stage 1 detailed implementation plan |
 | [docs/stages/001-02-encrypted-config.md](docs/stages/001-02-encrypted-config.md) | Stage 1-02 encrypted SQLite + config in DB plan |
 | [docs/stages/002-01-importance-detection.md](docs/stages/002-01-importance-detection.md) | Stage 2-01 importance filter implementation plan |
+| [docs/stages/008-03-imap-reconnect.md](docs/stages/008-03-imap-reconnect.md) | Stage 8-03 IMAP auto-reconnect + OAuth re-auth Telegram alert (implemented) |
+| [docs/stages/008-04-token-hot-reload.md](docs/stages/008-04-token-hot-reload.md) | Stage 8-04 hot reload — OAuth token reload without restart (phase 1 done; phase 2 draft) |
 
 ## Development
 

@@ -68,8 +68,8 @@ daemon logs in with XOAUTH2, refreshing access tokens automatically.
   startup — you don't have to wait for a manual restart to be notified. To recover:
   1. On the machine running the daemon: `email-agent account edit <email>` and
      answer **y** to "Re-authorize with Google now?" (a browser opens for consent).
-  2. Restart the daemon (`email-agent run`) — the running process caches the old
-     token in memory, so the new one only takes effect after a restart.
+  2. That's it — the running daemon re-reads the new token and resumes polling on
+     the next cycle; no restart is required.
 
   A mailbox whose token has expired at daemon startup is skipped (with the alert)
   rather than taking the whole daemon down; other accounts keep polling.
