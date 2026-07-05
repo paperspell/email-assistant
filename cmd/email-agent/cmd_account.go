@@ -22,6 +22,10 @@ import (
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 )
 
+// maxAccountBackfill bounds the first-run backfill window offered by the CLI to
+// one week (mirrors scheduler.maxBackfillWindow).
+const maxAccountBackfill = 7 * 24 * time.Hour
+
 func newAccountCmd(dbPath *string) *cobra.Command {
 	accountCmd := &cobra.Command{
 		Use:   "account",
@@ -250,17 +254,31 @@ func addOrEditAccount(
 		return err
 	}
 
+	backfill, err := promptDuration(sc, "  First-run backfill of unread mail (0 = off, max 168h)", cur.BackfillWindow)
+	if err != nil {
+		return err
+	}
+	if backfill < 0 {
+		backfill = 0
+	}
+	if backfill > maxAccountBackfill {
+		backfill = maxAccountBackfill
+		fmt.Printf("  (clamped to the %s maximum)\n", maxAccountBackfill)
+	}
+
 	acc := domain.Account{
-		ID:           email, // identity = email
-		Name:         name,
-		Email:        email,
-		Host:         host,
-		Port:         port,
-		Username:     username,
-		TLS:          tls,
-		PollInterval: poll,
-		AuthType:     authType,
-		Enabled:      cur.Enabled,
+		ID:             email, // identity = email
+		Name:           name,
+		Email:          email,
+		Host:           host,
+		Port:           port,
+		Username:       username,
+		TLS:            tls,
+		PollInterval:   poll,
+		AuthType:       authType,
+		Enabled:        cur.Enabled,
+		DigestTime:     cur.DigestTime,
+		BackfillWindow: backfill,
 	}
 
 	if acc.Email == "" || acc.Host == "" {

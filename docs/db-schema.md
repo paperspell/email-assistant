@@ -2,7 +2,8 @@
 
 > **Keep this file up to date.** Update the ERD whenever a new migration is added.
 
-Current schema reflects migrations up to: `001_initial.sql` (squashed baseline)
+Current schema reflects migrations up to: `002_backfill_window.sql`
+(baseline `001_initial.sql` is squashed)
 
 ```mermaid
 erDiagram
@@ -60,6 +61,7 @@ erDiagram
         TEXT oauth_access_token "refreshable cache"
         DATETIME oauth_token_expiry "nullable"
         TEXT digest_time "HH:MM override; empty = global digest.time"
+        TEXT backfill_window "Go duration; first-run unread backfill window, 0s = off (max 7d)"
     }
 
     classifications {

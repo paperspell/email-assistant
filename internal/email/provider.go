@@ -27,6 +27,14 @@ type Provider interface {
 	Connect(ctx context.Context) error
 	// FetchSince returns messages with UID strictly greater than lastUID.
 	FetchSince(ctx context.Context, lastUID uint32) ([]Message, error)
+	// LatestUID returns the current highest UID boundary in the mailbox without
+	// fetching any messages, used to set the first-run baseline cheaply. Returns 0
+	// for an empty mailbox.
+	LatestUID(ctx context.Context) (uint32, error)
+	// FetchUnseenSince returns unread messages received on or after `since`, capped
+	// to the newest `limit` (0 = no cap). Read state is not changed. Used for the
+	// first-run backfill.
+	FetchUnseenSince(ctx context.Context, since time.Time, limit int) ([]Message, error)
 	// MarkRead marks the message with the given UID as read (seen) in the
 	// mailbox. It is best-effort with respect to connection state: callers
 	// should treat an error as non-fatal.

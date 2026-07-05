@@ -45,10 +45,15 @@ func (m *mockLLMProvider) getCalls() int {
 }
 
 type mockProvider struct {
-	messages []email.Message
-	fetchErr error
-	mu       sync.Mutex
-	lastUID  uint32
+	messages    []email.Message
+	fetchErr    error
+	latestErr   error
+	unseen      []email.Message
+	unseenErr   error
+	unseenSince time.Time
+	unseenLimit int
+	mu          sync.Mutex
+	lastUID     uint32
 }
 
 func (m *mockProvider) Connect(_ context.Context) error { return nil }
@@ -58,6 +63,29 @@ func (m *mockProvider) FetchSince(_ context.Context, lastUID uint32) ([]email.Me
 	m.lastUID = lastUID
 	m.mu.Unlock()
 	return m.messages, m.fetchErr
+}
+
+// LatestUID mirrors the IMAP client: the highest existing UID, derived here from
+// the mock's messages, without "fetching" them.
+func (m *mockProvider) LatestUID(_ context.Context) (uint32, error) {
+	if m.latestErr != nil {
+		return 0, m.latestErr
+	}
+	var maxUID uint32
+	for _, msg := range m.messages {
+		if msg.UID > maxUID {
+			maxUID = msg.UID
+		}
+	}
+	return maxUID, nil
+}
+
+func (m *mockProvider) FetchUnseenSince(_ context.Context, since time.Time, limit int) ([]email.Message, error) {
+	m.mu.Lock()
+	m.unseenSince = since
+	m.unseenLimit = limit
+	m.mu.Unlock()
+	return m.unseen, m.unseenErr
 }
 
 func (m *mockProvider) MarkRead(_ context.Context, _ uint32) error { return nil }
@@ -186,6 +214,34 @@ func TestScheduler_FirstRun_SkipsExistingMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, state)
 	assert.Equal(t, uint32(11), state.LastUID, "sync state must be set to the highest existing UID")
+}
+
+func TestScheduler_FirstRun_DoesNotFetchExistingBodies(t *testing.T) {
+	// fetchErr makes FetchSince fail if it is called; the first run must instead
+	// use LatestUID (cheap) to set the baseline without downloading any mail.
+	provider := &mockProvider{
+		messages: []email.Message{{UID: 100, Subject: "x", FromEmail: "a@b.com", Date: time.Now()}},
+		fetchErr: errors.New("FetchSince must not be called on first run"),
+	}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestScheduler(t, provider, notifier)
+
+	runOnce(t, sched) // would error if FetchSince were called
+
+	assert.Empty(t, notifier.getSent(), "no notifications on first run")
+	state, err := syncRepo.Get(context.Background(), "test@example.com")
+	require.NoError(t, err)
+	require.NotNil(t, state)
+	assert.Equal(t, uint32(100), state.LastUID, "baseline comes from LatestUID")
+}
+
+func TestScheduler_FirstRun_LatestUIDErrorPropagates(t *testing.T) {
+	provider := &mockProvider{latestErr: errors.New("status failed")}
+	sched, _, _ := newTestScheduler(t, provider, &mockNotifier{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	assert.Error(t, sched.poll(ctx))
 }
 
 func TestScheduler_ProcessesNewMessages(t *testing.T) {

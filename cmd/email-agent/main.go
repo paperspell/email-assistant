@@ -201,6 +201,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			ClauseRepo:          clauseRepo,
 			RuleEngine:          ruleEngine,
 			BaselineFloor:       cfg.Filter.BaselineFloor,
+			BackfillWindow:      acc.BackfillWindow,
 		})
 		g.Go(func() error { return sched.Start(gCtx) })
 	}

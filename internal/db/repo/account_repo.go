@@ -22,7 +22,7 @@ func NewAccountRepo(db *sql.DB) *AccountRepo {
 
 const accountColumns = `id, name, email, imap_host, imap_port, imap_username,
 	imap_password, tls, poll_interval, auth_type, enabled,
-	oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time`
+	oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window`
 
 // List returns all accounts ordered by creation time.
 func (r *AccountRepo) List(ctx context.Context) ([]domain.Account, error) {
@@ -58,8 +58,8 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 		INSERT INTO accounts
 			(id, name, email, imap_host, imap_port, imap_username,
 			 imap_password, tls, poll_interval, auth_type, enabled,
-			 oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name          = excluded.name,
 			email         = excluded.email,
@@ -74,12 +74,14 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 			oauth_refresh_token = excluded.oauth_refresh_token,
 			oauth_access_token  = excluded.oauth_access_token,
 			oauth_token_expiry  = excluded.oauth_token_expiry,
-			digest_time         = excluded.digest_time
+			digest_time         = excluded.digest_time,
+			backfill_window     = excluded.backfill_window
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		a.ID, a.Name, a.Email, a.Host, a.Port, a.Username,
 		a.Password, boolToInt(a.TLS), a.PollInterval.String(), a.AuthType, boolToInt(a.Enabled),
 		a.OAuthRefreshToken, a.OAuthAccessToken, nullableTime(a.OAuthTokenExpiry), a.DigestTime,
+		a.BackfillWindow.String(),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert account: %w", err)
@@ -163,12 +165,13 @@ func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 		a            domain.Account
 		tls, enabled int
 		pollStr      string
+		backfillStr  string
 		expiry       sql.NullString
 	)
 	if err := s.Scan(
 		&a.ID, &a.Name, &a.Email, &a.Host, &a.Port, &a.Username,
 		&a.Password, &tls, &pollStr, &a.AuthType, &enabled,
-		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry, &a.DigestTime,
+		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry, &a.DigestTime, &backfillStr,
 	); err != nil {
 		return nil, err
 	}
@@ -178,6 +181,11 @@ func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 		return nil, fmt.Errorf("parse poll_interval %q for account %q: %w", pollStr, a.ID, err)
 	}
 	a.PollInterval = d
+	if backfillStr != "" {
+		if a.BackfillWindow, err = time.ParseDuration(backfillStr); err != nil {
+			return nil, fmt.Errorf("parse backfill_window %q for account %q: %w", backfillStr, a.ID, err)
+		}
+	}
 	a.TLS = tls != 0
 	a.Enabled = enabled != 0
 	if expiry.Valid && expiry.String != "" {

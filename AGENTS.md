@@ -55,6 +55,8 @@ docs/                Architecture, guidelines, plans
 | [docs/stages/002-01-importance-detection.md](docs/stages/002-01-importance-detection.md) | Stage 2-01 importance filter implementation plan |
 | [docs/stages/008-03-imap-reconnect.md](docs/stages/008-03-imap-reconnect.md) | Stage 8-03 IMAP auto-reconnect + OAuth re-auth Telegram alert (implemented) |
 | [docs/stages/008-04-token-hot-reload.md](docs/stages/008-04-token-hot-reload.md) | Stage 8-04 hot reload — OAuth token reload without restart (phase 1 done; phase 2 draft) |
+| [docs/stages/008-05-fast-first-run.md](docs/stages/008-05-fast-first-run.md) | Stage 8-05 fast first run — baseline UID without downloading existing mail (implemented) |
+| [docs/stages/008-06-first-run-backfill.md](docs/stages/008-06-first-run-backfill.md) | Stage 8-06 first-run backfill — process recent unread on first run, per-account opt-in (implemented) |
 
 ## Development
 

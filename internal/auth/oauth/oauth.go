@@ -11,12 +11,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os/exec"
-	"runtime"
 	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
+
+	"github.com/paperspell/email-assistant/internal/pkg/browser"
 )
 
 // gmailScope grants full IMAP/SMTP access, required for IMAP login.
@@ -98,7 +98,7 @@ func Consent(ctx context.Context, cfg *oauth2.Config) (Tokens, error) {
 	)
 	fmt.Println("Opening your browser to authorize access to Gmail...")
 	fmt.Printf("If it does not open, visit this URL:\n\n  %s\n\n", authURL)
-	if err := openBrowser(authURL); err != nil {
+	if err := browser.Open(authURL); err != nil {
 		fmt.Println("(could not open the browser automatically — open the URL above manually)")
 	}
 
@@ -245,21 +245,4 @@ func randomState() (string, error) {
 		return "", fmt.Errorf("oauth: generate state: %w", err)
 	}
 	return hex.EncodeToString(b), nil
-}
-
-func openBrowser(url string) error {
-	var cmd string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		cmd, args = "open", []string{url}
-	case "windows":
-		cmd, args = "rundll32", []string{"url.dll,FileProtocolHandler", url}
-	default:
-		cmd, args = "xdg-open", []string{url}
-	}
-	if err := exec.Command(cmd, args...).Start(); err != nil { //nolint:gosec // cmd is from a fixed set
-		return fmt.Errorf("open browser: %w", err)
-	}
-	return nil
 }

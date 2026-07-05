@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -16,6 +18,8 @@ import (
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/pkg/browser"
+	"github.com/paperspell/email-assistant/internal/telegram"
 )
 
 // sectionFn configures one group of settings interactively.
@@ -279,15 +283,81 @@ func configureTelegram(
 	if err != nil {
 		return fmt.Errorf("read bot token: %w", err)
 	}
-	chatID := promptText(sc, "  Chat ID", current[config.KeyTelegramChatID])
+	if botToken == "" {
+		botToken = current[config.KeyTelegramBotToken]
+	}
+	if botToken == "" {
+		return fmt.Errorf("telegram: bot token is required")
+	}
 
-	settings := map[string]string{
-		config.KeyTelegramChatID: chatID,
+	chatID := detectTelegramChatID(botToken, sc, current[config.KeyTelegramChatID])
+
+	return saveSettings(ctx, r, map[string]string{
+		config.KeyTelegramBotToken: botToken,
+		config.KeyTelegramChatID:   chatID,
+	})
+}
+
+// telegramSetup is the guided-setup surface of telegram.SetupClient, declared
+// as an interface so detectTelegramChatID can be tested without a live bot.
+type telegramSetup interface {
+	Username() string
+	LatestChatID() (int64, error)
+	SendVerification(chatID int64) error
+}
+
+// Seams overridable in tests: the client factory, the browser opener, the poll
+// delay, and the number of poll attempts.
+var (
+	newTelegramSetup   = func(token string) (telegramSetup, error) { return telegram.NewSetupClient(token) }
+	openTelegramLink   = browser.Open
+	chatIDPollDelay    = 2 * time.Second
+	chatIDPollAttempts = 60
+)
+
+// detectTelegramChatID runs the guided chat-id discovery: it validates the bot
+// token, opens the bot so the user can message it (a bot cannot message a chat
+// that never messaged it first), polls getUpdates for the resulting chat id, and
+// sends a verification message to confirm delivery. On any failure it falls back
+// to asking for the chat id manually so setup never dead-ends.
+func detectTelegramChatID(token string, sc *bufio.Scanner, currentChatID string) string {
+	client, err := newTelegramSetup(token)
+	if err != nil {
+		fmt.Printf("  Could not validate the bot token: %v\n", err)
+		return promptText(sc, "  Chat ID", currentChatID)
 	}
-	if botToken != "" {
-		settings[config.KeyTelegramBotToken] = botToken
+
+	username := client.Username()
+	link := "https://t.me/" + username
+	fmt.Printf("  Bot @%s. Open %s and press Start (or send it any message).\n", username, link)
+	if err := openTelegramLink(link); err != nil {
+		fmt.Println("  (could not open the link automatically — open it manually)")
 	}
-	return saveSettings(ctx, r, settings)
+
+	fmt.Print("  Waiting for your message")
+	var chatID int64
+	for range chatIDPollAttempts {
+		if id, err := client.LatestChatID(); err == nil && id != 0 {
+			chatID = id
+			break
+		}
+		fmt.Print(".")
+		time.Sleep(chatIDPollDelay)
+	}
+	fmt.Println()
+
+	if chatID == 0 {
+		fmt.Println("  No message detected — enter the chat id manually.")
+		return promptText(sc, "  Chat ID", currentChatID)
+	}
+	fmt.Printf("  Detected chat id: %d\n", chatID)
+
+	if err := client.SendVerification(chatID); err != nil {
+		fmt.Printf("  Warning: test message failed (%v) — the chat id may be wrong.\n", err)
+	} else {
+		fmt.Println("  Test message delivered — Telegram verified.")
+	}
+	return strconv.FormatInt(chatID, 10)
 }
 
 func configureNotifications(

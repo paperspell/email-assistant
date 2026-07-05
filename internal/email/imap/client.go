@@ -12,6 +12,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -211,6 +212,31 @@ func (c *Client) authenticate(cl *imapclient.Client) error {
 	return nil
 }
 
+// LatestUID returns the highest UID boundary in INBOX (UIDNEXT-1) with a single
+// STATUS command, without fetching any messages. Used to set the first-run
+// baseline cheaply. Returns 0 for an empty mailbox.
+func (c *Client) LatestUID(_ context.Context) (uint32, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var uidNext imaplib.UID
+	err := c.exec(func() error {
+		data, serr := c.client.Status("INBOX", &imaplib.StatusOptions{UIDNext: true}).Wait()
+		if serr != nil {
+			return fmt.Errorf("imap status uidnext: %w", serr)
+		}
+		uidNext = data.UIDNext
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	if uidNext <= 1 {
+		return 0, nil
+	}
+	return uint32(uidNext) - 1, nil
+}
+
 // FetchSince returns messages with UID greater than lastUID.
 // Body is fetched in a separate IMAP command when FetchBody is true to avoid
 // a Zoho server bug where combining BODY[HEADER.FIELDS] and BODY[TEXT] in a
@@ -243,41 +269,92 @@ func (c *Client) FetchSince(_ context.Context, lastUID uint32) ([]email.Message,
 			return nil
 		}
 
-		uidSet := imaplib.UIDSetNum(uids...)
-
-		// First fetch: envelope + extra headers only.
-		c.cfg.Logger.Debug("imap fetch starting", "uids", len(uids))
-		msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
-			Envelope: true,
-			UID:      true,
-			BodySection: []*imaplib.FetchItemBodySection{
-				extraHeaderSection,
-			},
-		}).Collect()
-		if err != nil {
-			return fmt.Errorf("imap fetch: %w", err)
+		msgs, ferr := c.fetchMessages(imaplib.UIDSetNum(uids...), len(uids))
+		if ferr != nil {
+			return ferr
 		}
-		c.cfg.Logger.Debug("imap fetch complete", "fetched", len(msgs))
-
-		result = parseMessages(msgs, c.cfg.Logger)
-
-		// Second fetch: body text only, in a separate command.
-		if c.cfg.FetchBody && len(result) > 0 {
-			bodies, berr := c.fetchBodies(uidSet)
-			if berr != nil {
-				c.cfg.Logger.Warn(fmt.Errorf("body fetch skipped, continuing without body: %w", berr))
-			} else {
-				for i := range result {
-					if body, ok := bodies[result[i].UID]; ok {
-						result[i].Body = body
-					}
-				}
-			}
-		}
+		result = msgs
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	return result, nil
+}
+
+// FetchUnseenSince returns unread messages received on or after `since`, capped
+// to the newest `limit` UIDs (0 = no cap). Used for the first-run backfill. Read
+// state is not changed (BODY.PEEK), so the messages stay unread in the mailbox.
+func (c *Client) FetchUnseenSince(_ context.Context, since time.Time, limit int) ([]email.Message, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var result []email.Message
+	err := c.exec(func() error {
+		result = nil
+
+		criteria := &imaplib.SearchCriteria{
+			Since:   since,
+			NotFlag: []imaplib.Flag{imaplib.FlagSeen}, // UNSEEN
+		}
+		searchData, serr := c.client.UIDSearch(criteria, nil).Wait()
+		if serr != nil {
+			return fmt.Errorf("imap uid search unseen: %w", serr)
+		}
+
+		uids := searchData.AllUIDs()
+		c.cfg.Logger.Debug("imap backfill search", "since", since, "found", len(uids), "limit", limit)
+		if len(uids) == 0 {
+			return nil
+		}
+		// AllUIDs is ascending; keep the newest `limit`.
+		if limit > 0 && len(uids) > limit {
+			uids = uids[len(uids)-limit:]
+		}
+
+		msgs, ferr := c.fetchMessages(imaplib.UIDSetNum(uids...), len(uids))
+		if ferr != nil {
+			return ferr
+		}
+		result = msgs
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// fetchMessages fetches envelopes (+ extra headers) and, when FetchBody is set,
+// plain-text bodies for the given UID set, returning parsed messages. Body is
+// fetched in a separate command to avoid a Zoho bug (see FetchSince). Must hold mu.
+func (c *Client) fetchMessages(uidSet imaplib.UIDSet, count int) ([]email.Message, error) {
+	c.cfg.Logger.Debug("imap fetch starting", "uids", count)
+	msgs, err := c.client.Fetch(uidSet, &imaplib.FetchOptions{
+		Envelope: true,
+		UID:      true,
+		BodySection: []*imaplib.FetchItemBodySection{
+			extraHeaderSection,
+		},
+	}).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("imap fetch: %w", err)
+	}
+	c.cfg.Logger.Debug("imap fetch complete", "fetched", len(msgs))
+
+	result := parseMessages(msgs, c.cfg.Logger)
+
+	if c.cfg.FetchBody && len(result) > 0 {
+		bodies, berr := c.fetchBodies(uidSet)
+		if berr != nil {
+			c.cfg.Logger.Warn(fmt.Errorf("body fetch skipped, continuing without body: %w", berr))
+		} else {
+			for i := range result {
+				if body, ok := bodies[result[i].UID]; ok {
+					result[i].Body = body
+				}
+			}
+		}
 	}
 	return result, nil
 }

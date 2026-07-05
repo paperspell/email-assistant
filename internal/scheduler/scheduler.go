@@ -49,7 +49,20 @@ type Config struct {
 	ClauseRepo    *repo.ClauseRepo
 	RuleEngine    filter.Engine
 	BaselineFloor domain.ImportanceLevel // baseline level at/below which the LLM is skipped
+
+	// BackfillWindow enables the first-run backfill: unread mail received within
+	// this window is processed on the first poll. 0 disables it. Values above
+	// maxBackfillWindow are clamped.
+	BackfillWindow time.Duration
 }
+
+const (
+	// maxBackfillWindow bounds the first-run backfill lookback to one week.
+	maxBackfillWindow = 7 * 24 * time.Hour
+	// maxBackfillMessages caps how many unread messages the first-run backfill
+	// processes, so a busy mailbox cannot trigger a flood of LLM calls/notifications.
+	maxBackfillMessages = 200
+)
 
 // Alerter delivers operational alerts to the user, distinct from new-email
 // notifications — for example, an account whose OAuth token needs re-authorization.
@@ -177,38 +190,38 @@ func (s *Scheduler) poll(ctx context.Context) error {
 		return err
 	}
 
-	var lastUID uint32
-	if state != nil {
-		lastUID = state.LastUID
+	// First run: no sync state exists yet. Establish the baseline from the
+	// mailbox's current highest UID without downloading any existing mail (a full
+	// FetchSince here would fetch every message — and every body — only to discard
+	// them). Only emails arriving after this baseline are processed on later polls.
+	if state == nil {
+		baseline, err := s.cfg.Provider.LatestUID(ctx)
+		if err != nil {
+			return err
+		}
+		if baseline == 0 {
+			// Empty mailbox: nothing to baseline yet, stay in first-run state.
+			return nil
+		}
+		// Process recent unread mail before recording the baseline. On failure we
+		// return without upserting so the next start retries; processMessage is
+		// idempotent via the (account, uid) upsert + the existence check below.
+		if err := s.backfillFirstRun(ctx); err != nil {
+			return err
+		}
+		s.cfg.Logger.Info("first run: baseline set, skipping existing emails",
+			"account_id", s.cfg.AccountID, "baseline_uid", baseline, "starting_from_uid", baseline+1)
+		return s.cfg.SyncRepo.Upsert(ctx, domain.SyncState{
+			AccountID: s.cfg.AccountID,
+			LastUID:   baseline,
+			SyncedAt:  timex.NowUTC(),
+		})
 	}
 
+	lastUID := state.LastUID
 	messages, err := s.cfg.Provider.FetchSince(ctx, lastUID)
 	if err != nil {
 		return err
-	}
-
-	// First run: no sync state exists yet. Record the current highest UID and
-	// skip processing — only emails arriving after this first poll will notify.
-	if state == nil {
-		maxUID := lastUID
-		for _, msg := range messages {
-			if msg.UID > maxUID {
-				maxUID = msg.UID
-			}
-		}
-		if maxUID > 0 {
-			s.cfg.Logger.Info("first run: skipping existing emails",
-				"account_id", s.cfg.AccountID,
-				"existing_count", len(messages),
-				"starting_from_uid", maxUID+1,
-			)
-			return s.cfg.SyncRepo.Upsert(ctx, domain.SyncState{
-				AccountID: s.cfg.AccountID,
-				LastUID:   maxUID,
-				SyncedAt:  timex.NowUTC(),
-			})
-		}
-		return nil
 	}
 
 	s.cfg.Logger.Debug("poll completed", "account_id", s.cfg.AccountID, "new_messages", len(messages))
@@ -245,6 +258,58 @@ func (s *Scheduler) poll(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// backfillFirstRun processes unread mail received within the account's backfill
+// window on the first run: important messages notify immediately, unimportant
+// ones fall through to the digest (both via processMessage's normal routing).
+// Bounded by maxBackfillWindow and maxBackfillMessages. It skips messages already
+// ingested so a restart mid-backfill does not re-notify.
+func (s *Scheduler) backfillFirstRun(ctx context.Context) error {
+	if s.cfg.BackfillWindow <= 0 {
+		return nil
+	}
+	window := s.cfg.BackfillWindow
+	if window > maxBackfillWindow {
+		window = maxBackfillWindow
+	}
+	since := timex.NowUTC().Add(-window)
+
+	msgs, err := s.cfg.Provider.FetchUnseenSince(ctx, since, maxBackfillMessages)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	rules, err := s.cfg.RuleRepo.ListEnabled(ctx, s.cfg.AccountID)
+	if err != nil {
+		return err
+	}
+	clauseTexts, err := s.cfg.ClauseRepo.ActiveTexts(ctx, s.cfg.AccountID)
+	if err != nil {
+		return err
+	}
+
+	processed := 0
+	for _, msg := range msgs {
+		existing, err := s.cfg.EmailRepo.GetByAccountAndUID(ctx, s.cfg.AccountID, msg.UID)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			continue // already ingested (e.g. a prior interrupted backfill)
+		}
+		if err := s.processMessage(ctx, msg, rules, clauseTexts); err != nil {
+			s.cfg.Logger.Error(err, "account_id", s.cfg.AccountID, "uid", msg.UID)
+			continue
+		}
+		processed++
+	}
+	s.cfg.Logger.Info("first run: backfilled recent unread",
+		"account_id", s.cfg.AccountID, "window", window, "found", len(msgs), "processed", processed)
 	return nil
 }
 
