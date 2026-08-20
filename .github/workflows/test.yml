@@ -7,29 +7,25 @@ on:
     branches: [ main ]
 
 env:
-  GOVERSION: 1.26.0
-  GONOSUMDB: github.com/paperspell
+  # Версия должна совпадать с GOLANGCI_LINT_VERSION в Makefile.
+  GOLANGCI_LINT_VERSION: v2.10.1
 
 jobs:
   golangci-lint:
     name: Lint Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out the code
         uses: actions/checkout@v6
 
+      # go-version-file вместо жёсткой версии: go.mod — единственный источник правды,
+      # иначе при его бампе CI падает с "go.mod requires go >= X (GOTOOLCHAIN=local)".
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GOVERSION }}
+          go-version-file: go.mod
           cache: true
-
-      - name: Set up private repository access
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          echo "machine github.com login $GITHUB_TOKEN" > ~/.netrc
-          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Cache golangci-lint
         uses: actions/cache@v5
@@ -38,15 +34,18 @@ jobs:
             ~/.cache/golangci-lint
           key: ${{ runner.os }}-golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}
 
+      # Скрипт берётся из тега, а не из master, и версия передаётся явно:
+      # без неё ставился последний релиз, на котором ломалась проверка контрольной суммы.
       - name: golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${{ env.GOLANGCI_LINT_VERSION }}
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/${{ env.GOLANGCI_LINT_VERSION }}/install.sh | sh -s -- -b $(go env GOPATH)/bin ${{ env.GOLANGCI_LINT_VERSION }}
           golangci-lint --version
           golangci-lint run --verbose
 
   unit-test:
     name: Unit Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out the code
         uses: actions/checkout@v6
@@ -56,15 +55,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GOVERSION }}
+          go-version-file: go.mod
           cache: true
-
-      - name: Set up private repository access
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          echo "machine github.com login $GITHUB_TOKEN" > ~/.netrc
-          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Run tests
         run: |
@@ -73,6 +65,7 @@ jobs:
   migration-test:
     name: Migration Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out the code
         uses: actions/checkout@v6
@@ -82,15 +75,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GOVERSION }}
+          go-version-file: go.mod
           cache: true
-
-      - name: Set up private repository access
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          echo "machine github.com login $GITHUB_TOKEN" > ~/.netrc
-          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Run migration tests
         run: |
