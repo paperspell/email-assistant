@@ -3,3 +3,9 @@
 /email-agent
 /bin/
 .claude/
+
+# Локальная конфигурация и зашифрованная база — никогда не коммитить.
+config.yaml
+*.db
+*.sqlite
+*.sqlite3
