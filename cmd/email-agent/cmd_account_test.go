@@ -14,16 +14,16 @@ func TestParseDurationDefaultUnit(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		unit  time.Duration
+		unit  string
 		want  time.Duration
 	}{
-		{"bare number as hours", "48", time.Hour, 48 * time.Hour},
-		{"bare number as minutes", "5", time.Minute, 5 * time.Minute},
-		{"zero stays off", "0", time.Hour, 0},
-		{"fractional bare number", "1.5", time.Hour, 90 * time.Minute},
-		{"explicit unit wins over default", "30m", time.Hour, 30 * time.Minute},
-		{"compound duration", "1h30m", time.Hour, 90 * time.Minute},
-		{"surrounding spaces", "  12  ", time.Hour, 12 * time.Hour},
+		{"bare number as hours", "48", "h", 48 * time.Hour},
+		{"bare number as minutes", "5", "m", 5 * time.Minute},
+		{"zero stays off", "0", "h", 0},
+		{"fractional bare number", "1.5", "h", 90 * time.Minute},
+		{"explicit unit wins over default", "30m", "h", 30 * time.Minute},
+		{"compound duration", "1h30m", "h", 90 * time.Minute},
+		{"surrounding spaces", "  12  ", "h", 12 * time.Hour},
 	}
 
 	for _, tt := range tests {
@@ -36,8 +36,10 @@ func TestParseDurationDefaultUnit(t *testing.T) {
 }
 
 func TestParseDurationDefaultUnit_RejectsGarbage(t *testing.T) {
-	for _, input := range []string{"", "abc", "48 hours", "h48"} {
-		_, err := parseDurationDefaultUnit(input, time.Hour)
+	// NaN/Inf and unitless negatives must stay errors: they are delegated to
+	// time.ParseDuration rather than being completed with a unit.
+	for _, input := range []string{"", "abc", "48 hours", "h48", "NaN", "Inf", "-5", "+5", "1e3"} {
+		_, err := parseDurationDefaultUnit(input, "h")
 		assert.Error(t, err, "input %q must not parse", input)
 	}
 }
@@ -45,7 +47,7 @@ func TestParseDurationDefaultUnit_RejectsGarbage(t *testing.T) {
 func TestPromptDuration_BareNumberUsesDefaultUnit(t *testing.T) {
 	sc := bufio.NewScanner(strings.NewReader("48\n"))
 
-	got, err := promptDuration(sc, "  backfill", 0, time.Hour)
+	got, err := promptDuration(sc, "  backfill", 0, "h")
 
 	require.NoError(t, err)
 	assert.Equal(t, 48*time.Hour, got)
@@ -54,7 +56,7 @@ func TestPromptDuration_BareNumberUsesDefaultUnit(t *testing.T) {
 func TestPromptDuration_EmptyInputKeepsDefault(t *testing.T) {
 	sc := bufio.NewScanner(strings.NewReader("\n"))
 
-	got, err := promptDuration(sc, "  poll interval", 10*time.Minute, time.Minute)
+	got, err := promptDuration(sc, "  poll interval", 10*time.Minute, "m")
 
 	require.NoError(t, err)
 	assert.Equal(t, 10*time.Minute, got)
@@ -63,7 +65,7 @@ func TestPromptDuration_EmptyInputKeepsDefault(t *testing.T) {
 func TestPromptDuration_InvalidInputReportsLabel(t *testing.T) {
 	sc := bufio.NewScanner(strings.NewReader("48 hours\n"))
 
-	_, err := promptDuration(sc, "  backfill", 0, time.Hour)
+	_, err := promptDuration(sc, "  backfill", 0, "h")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "backfill")

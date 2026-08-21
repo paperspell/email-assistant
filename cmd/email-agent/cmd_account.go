@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -213,9 +214,10 @@ func addOrEditAccount(
 		return fmt.Errorf("auth type must be %q or %q", domain.AuthPassword, domain.AuthOAuth)
 	}
 	if authType == domain.AuthOAuth && !oauthClientConfigured(ctx, sr) {
-		// The account is saved either way, but consent cannot run until the
-		// Google client exists — say so here instead of failing later.
-		fmt.Println("  (no Google OAuth client yet — run 'email-agent init oauth' before starting the daemon)")
+		// Consent runs before the account is persisted, so without a Google
+		// client the whole wizard would fail after every other question. Stop
+		// here instead, while nothing has been typed yet.
+		return fmt.Errorf("oauth accounts need a Google client first: run 'email-agent init oauth'")
 	}
 
 	// Email identifies the account, so ask it first; other fields default from it.
@@ -252,14 +254,19 @@ func addOrEditAccount(
 		tls = promptText(sc, "  TLS", strconv.FormatBool(tls)) == "true"
 	}
 
-	poll, err := promptDuration(sc, "  Poll interval (bare number = minutes)", cur.PollInterval, time.Minute)
+	poll, err := promptDuration(sc, "  Poll interval (bare number = minutes)", cur.PollInterval, "m")
 	if err != nil {
 		return err
+	}
+	if poll <= 0 {
+		// The daemon refuses to start on a non-positive poll interval, so catch
+		// it here rather than persisting a config that breaks at startup.
+		return fmt.Errorf("poll interval must be positive, got %s", poll)
 	}
 
 	backfill, err := promptDuration(sc,
 		"  First-run backfill of unread mail (0 = off, max 168h; bare number = hours)",
-		cur.BackfillWindow, time.Hour)
+		cur.BackfillWindow, "h")
 	if err != nil {
 		return err
 	}
@@ -519,23 +526,28 @@ func promptInt(sc *bufio.Scanner, label string, def int) (int, error) {
 }
 
 // promptDuration reads a duration, accepting a plain number as shorthand for
-// unit — "48" means 48h when unit is time.Hour. Go's ParseDuration rejects
+// unitSuffix — "48" with "h" reads as "48h". Go's ParseDuration rejects
 // unitless input, which is an easy mistake to make at an interactive prompt.
-func promptDuration(sc *bufio.Scanner, label string, def time.Duration, unit time.Duration) (time.Duration, error) {
+func promptDuration(sc *bufio.Scanner, label string, def time.Duration, unitSuffix string) (time.Duration, error) {
 	v := promptText(sc, label, def.String())
-	d, err := parseDurationDefaultUnit(v, unit)
+	d, err := parseDurationDefaultUnit(v, unitSuffix)
 	if err != nil {
 		return 0, fmt.Errorf("%s: invalid duration %q", strings.TrimSpace(label), v)
 	}
 	return d, nil
 }
 
-// parseDurationDefaultUnit parses a Go duration string; a bare number is
-// multiplied by unit instead of being rejected.
-func parseDurationDefaultUnit(s string, unit time.Duration) (time.Duration, error) {
+// bareNumber matches an unsigned decimal with no unit, the only shape
+// parseDurationDefaultUnit completes with a default unit.
+var bareNumber = regexp.MustCompile(`^\d+(\.\d+)?$`)
+
+// parseDurationDefaultUnit parses a Go duration string, appending unitSuffix to
+// a bare number. Everything else, including overflow, sign and format handling,
+// stays with the standard parser — so "NaN", "Inf" and "-5" remain errors.
+func parseDurationDefaultUnit(s, unitSuffix string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
-	if n, err := strconv.ParseFloat(s, 64); err == nil {
-		return time.Duration(n * float64(unit)), nil
+	if bareNumber.MatchString(s) {
+		s += unitSuffix
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
