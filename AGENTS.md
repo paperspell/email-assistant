@@ -81,3 +81,65 @@ email-agent run
 # Update a setting after init
 email-agent config set account.poll_interval 2m
 ```
+
+## Code Review Rules
+
+These rules drive automated code review (Codex) on pull requests. Flag a change only when it
+breaks one of the rules below or is a genuine correctness or privacy regression — style points
+that `golangci-lint` already enforces are out of scope.
+
+### This repository is public
+
+- Real credentials never belong in the tree: IMAP passwords, OAuth client secrets, API keys, bot
+  tokens, or a populated `~/.email-agent` database, including inside tests, fixtures, and docs.
+  `config.example.yaml` carries placeholders only.
+- Committed binaries are a blind spot — secret scanners skip them — so build output stays ignored
+  rather than checked in.
+
+### Privacy
+
+- Email bodies and attachments are not stored by default and are never sent to an LLM provider
+  beyond what the classification feature explicitly needs.
+- Bodies, attachments, API keys, OAuth tokens, and passwords must not reach logs, not even inside
+  wrapped error messages. Subjects and addresses count as user content too — log identifiers.
+- Every LLM interaction is logged locally, and every classification carries a human-readable
+  reason. A code path that decides something without recording why is incomplete.
+- Nothing is sent from the user's mailbox without explicit user approval.
+
+### Layering
+
+- Domain models stay independent of IMAP, Telegram, and LLM specifics. Provider details leaking
+  into `internal/domain/` or `internal/scheduler/` are a defect.
+- A new provider is a new implementation behind the existing interface, not another branch in the
+  scheduler.
+
+### Errors, logging, time, IDs
+
+- Wrap errors with `errx.Wrap(ctx, err, "message", "key", value)`; a bare
+  `fmt.Errorf("...: %w", err)` loses the context keys. An error that is neither returned nor
+  logged is a defect.
+- `panic` is acceptable only for unrecoverable startup failures (`flow.Must`); never in the poll
+  loop.
+- Timestamps come from `timex.NowUTC()`, IDs from `idx`. `time.Now()` in new code is wrong.
+
+### Daemon behaviour
+
+- Every goroutine must exit on context cancellation; a poll or reconnect loop without a backoff
+  spins against the provider and gets the account throttled.
+- Retry only what is safe to repeat. Retrying a non-idempotent action is a defect, not a
+  robustness feature.
+
+### Database and configuration
+
+- Schema changes go through a new embedded migration and are additive. Editing a migration that
+  has already been applied corrupts existing installations — the daemon runs on real machines that
+  will not be reinstalled.
+- After a migration, `docs/db-schema.md` must be updated; migration tests live behind
+  `-tags=migration`.
+- A new setting needs a documented default and startup validation that fails fast when a required
+  value is missing.
+
+### Packaging
+
+- Do not add `MemoryDenyWriteExecute` to the systemd unit. SQLite runs through a wasm runtime that
+  needs writable-executable memory, so that hardening flag stops the daemon from starting.
