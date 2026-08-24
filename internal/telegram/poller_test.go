@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
@@ -36,7 +37,7 @@ func TestPoller_Offset_RoundTrip(t *testing.T) {
 func TestPoller_LoadOffset_MalformedValue(t *testing.T) {
 	p, sr := newOffsetPoller(t)
 	ctx := context.Background()
-	require.NoError(t, sr.Set(ctx, offsetSettingKey, "not-a-number"))
+	require.NoError(t, sr.Set(ctx, config.KeyTelegramUpdateOffset, "not-a-number"))
 
 	assert.Equal(t, int64(0), p.loadOffset(ctx), "a malformed stored offset falls back to 0")
 }
