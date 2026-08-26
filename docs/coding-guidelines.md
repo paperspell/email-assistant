@@ -197,11 +197,21 @@ text email body  attachments  api keys  oauth tokens  passwords
 
 ## Local Configuration
 
-Configuration should be file-based.
+Configuration lives in the `settings` table of the encrypted SQLite database. There is no
+configuration file — `email-agent init` creates the database and seeds it, and
+`email-agent config set <key> <value>` changes a setting afterwards.
 
-Examples:
+`internal/config` loads the `Config` struct from the settings repository. Every key is declared in
+`internal/config/keys.go`, and reads and writes must go through those constants rather than a raw
+string literal, so that renames fail at compile time instead of silently pointing at a key nobody
+writes any more.
 
-text config.yaml  config.toml
+Email accounts are not settings. They live in the `accounts` table, are managed with the `account`
+subcommands, and may override polling and digest defaults per account.
+
+`config.example.yaml` is documentation only and is never read by the application; it describes the
+environment variables and CLI flags that control how the daemon starts. See
+[settings.md](settings.md) for the settings themselves.
 
 ---
 
@@ -215,7 +225,10 @@ Fail fast when required settings are missing.
 
 ## Explicit Defaults
 
-All defaults should be documented.
+All defaults should be documented. `config.defaults()` is the runtime source of truth: it builds
+the `Config` the daemon actually uses. `config.DefaultValues()` derives the display strings shown
+by the CLI from it and covers only the settings that are user-visible, so a new default belongs in
+`defaults()` first and in `DefaultValues()` only if the CLI should show it.
 
 Avoid hidden behavior.
 

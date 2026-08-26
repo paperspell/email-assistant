@@ -8,15 +8,15 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 
+	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 )
 
 const (
-	offsetSettingKey = "telegram.update_offset"
-	longPollTimeout  = 25               // seconds — Telegram long-poll window
-	requestTimeout   = 30 * time.Second // HTTP timeout — must exceed longPollTimeout
-	retryDelay       = 5 * time.Second
+	longPollTimeout = 25               // seconds — Telegram long-poll window
+	requestTimeout  = 30 * time.Second // HTTP timeout — must exceed longPollTimeout
+	retryDelay      = 5 * time.Second
 )
 
 // Poller long-polls the Telegram Bot API for callback_query updates
@@ -89,7 +89,7 @@ func (p *Poller) ensureNoWebhook(ctx context.Context) error {
 }
 
 func (p *Poller) loadOffset(ctx context.Context) int64 {
-	v, err := p.SettingsRepo.Get(ctx, offsetSettingKey)
+	v, err := p.SettingsRepo.Get(ctx, config.KeyTelegramUpdateOffset)
 	if err != nil || v == "" {
 		return 0
 	}
@@ -101,7 +101,7 @@ func (p *Poller) loadOffset(ctx context.Context) int64 {
 }
 
 func (p *Poller) saveOffset(ctx context.Context, offset int64) {
-	if err := p.SettingsRepo.Set(ctx, offsetSettingKey, strconv.FormatInt(offset, 10)); err != nil {
+	if err := p.SettingsRepo.Set(ctx, config.KeyTelegramUpdateOffset, strconv.FormatInt(offset, 10)); err != nil {
 		p.Logger.Error(err)
 	}
 }
