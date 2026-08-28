@@ -16,9 +16,15 @@ func Score(f features.EmailFeatures) (int, []string) {
 	reasons := []string{fmt.Sprintf("baseline: +%d", baseline)}
 
 	// --- Negative signals (newsletters / bulk) ---
+	// List-Unsubscribe marks bulk-capable sending infrastructure, not unimportant
+	// mail: banks, government portals, invoices and school systems all set it. At
+	// its former -40 it cancelled the whole baseline, so such mail scored 0 and
+	// never reached the LLM. Kept as a mild hint instead, so a single positive
+	// signal can still lift the message over the "maybe" line. Genuine bulk is
+	// caught by Precedence below, and a message carrying both still lands at 0.
 	if f.HasListUnsubscribe {
-		score -= 40
-		reasons = append(reasons, "newsletter (List-Unsubscribe header): -40")
+		score -= 15
+		reasons = append(reasons, "bulk-capable sender (List-Unsubscribe header): -15")
 	}
 	if f.IsBulkPrecedence {
 		score -= 30

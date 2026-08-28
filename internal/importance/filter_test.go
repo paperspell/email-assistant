@@ -121,3 +121,38 @@ func TestCategory_Marketing(t *testing.T) {
 func TestCategory_Other(t *testing.T) {
 	assert.Equal(t, domain.CategoryOther, Category(feats()))
 }
+
+// withUnsubscribeOnly marks mail from bulk-capable infrastructure that is not a
+// bulk send: banks, government portals and invoicing systems set List-Unsubscribe
+// without Precedence: bulk.
+func withUnsubscribeOnly(f *features.EmailFeatures) { f.HasListUnsubscribe = true }
+
+func TestScore_TransactionalWithUnsubscribe_ReachesMaybe(t *testing.T) {
+	// Регрессия: раньше -40 за List-Unsubscribe обнуляло базовые +40, счёт
+	// падал до нуля, и письмо отсеивалось до вызова LLM.
+	score, _ := Score(feats(withUnsubscribeOnly, withInvoice))
+
+	assert.GreaterOrEqual(t, score, 30, "счёт заказа/счёта с заголовком отписки")
+	assert.Equal(t, domain.LevelMaybe, Level(score))
+}
+
+func TestScore_GovernmentWithUnsubscribe_StaysAtLeastMaybe(t *testing.T) {
+	score, _ := Score(feats(withUnsubscribeOnly, withGovt))
+
+	assert.GreaterOrEqual(t, score, 30)
+}
+
+func TestScore_RealNewsletter_StaysIgnore(t *testing.T) {
+	// Настоящая рассылка несёт оба признака и по-прежнему отсеивается.
+	score, _ := Score(feats(withNewsletter))
+
+	assert.Equal(t, domain.LevelIgnore, Level(score))
+	assert.LessOrEqual(t, score, 5)
+}
+
+func TestScore_UnsubscribeAloneWithoutSignals_StaysIgnore(t *testing.T) {
+	// Без единого положительного сигнала письмо всё ещё ниже порога.
+	score, _ := Score(feats(withUnsubscribeOnly, withUnknown))
+
+	assert.Equal(t, domain.LevelIgnore, Level(score))
+}
