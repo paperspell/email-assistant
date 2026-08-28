@@ -276,3 +276,12 @@ func TestEmailRepo_Upsert_DuplicateKeepsStoredID(t *testing.T) {
 		Source:       domain.SourceRuleBased,
 	}))
 }
+
+func TestEmailRepo_Upsert_NilReturnsError(t *testing.T) {
+	r := NewEmailRepo(openTestDB(t))
+
+	err := r.Upsert(context.Background(), nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil email")
+}
