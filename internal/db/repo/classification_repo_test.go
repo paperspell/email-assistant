@@ -28,7 +28,7 @@ func TestClassificationRepo_Save_And_Get(t *testing.T) {
 		Status:     domain.StatusNew,
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
-	require.NoError(t, emailRepo.Upsert(ctx, e))
+	require.NoError(t, emailRepo.Upsert(ctx, &e))
 
 	c := domain.Classification{
 		ID:           "cls-01",
@@ -66,7 +66,7 @@ func TestClassificationRepo_GetByEmailIDAndSource(t *testing.T) {
 		Status:     domain.StatusNew,
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
-	require.NoError(t, emailRepo.Upsert(ctx, e))
+	require.NoError(t, emailRepo.Upsert(ctx, &e))
 
 	rule := domain.Classification{
 		ID: "cls-rule", EmailID: "email-02",
@@ -201,7 +201,7 @@ func TestEmailRepo_SetTelegramMessageID(t *testing.T) {
 		Status:     domain.StatusNotified,
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
-	require.NoError(t, r.Upsert(ctx, e))
+	require.NoError(t, r.Upsert(ctx, &e))
 	require.NoError(t, r.SetTelegramMessageID(ctx, e.ID, 42001))
 
 	got, err := r.GetByID(ctx, e.ID)

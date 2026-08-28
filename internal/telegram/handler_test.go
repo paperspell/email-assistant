@@ -137,7 +137,7 @@ func insertTestEmail(t *testing.T, r *repo.EmailRepo, id, fromEmail string) doma
 		Status:     domain.StatusNotified,
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
-	require.NoError(t, r.Upsert(context.Background(), e))
+	require.NoError(t, r.Upsert(context.Background(), &e))
 	return e
 }
 

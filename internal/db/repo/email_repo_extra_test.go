@@ -20,7 +20,7 @@ func TestEmailRepo_GetByID(t *testing.T) {
 		FromEmail: "a@b.com", FromName: "A", Date: now,
 		Status: domain.StatusNotified, ReceivedAt: now,
 	}
-	require.NoError(t, r.Upsert(ctx, e))
+	require.NoError(t, r.Upsert(ctx, &e))
 
 	got, err := r.GetByID(ctx, "e-1")
 	require.NoError(t, err)

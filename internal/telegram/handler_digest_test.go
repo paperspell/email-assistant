@@ -67,7 +67,7 @@ func ignoredEmail(t *testing.T, er *repo.EmailRepo, id string, uid uint32) {
 		FromEmail: id + "@s.com", FromName: "N", Date: time.Now(),
 		Status: domain.StatusIgnored, ReceivedAt: time.Now(),
 	}
-	require.NoError(t, er.Upsert(context.Background(), e))
+	require.NoError(t, er.Upsert(context.Background(), &e))
 	require.NoError(t, er.UpdateStatusDecidedBy(context.Background(), id, domain.StatusIgnored, "llm:low"))
 }
 
