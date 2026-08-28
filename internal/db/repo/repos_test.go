@@ -42,7 +42,7 @@ func TestEmailRepo_Upsert_New(t *testing.T) {
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
 
-	require.NoError(t, r.Upsert(ctx, e))
+	require.NoError(t, r.Upsert(ctx, &e))
 
 	got, err := r.GetByAccountAndUID(ctx, "acc1", 42)
 	require.NoError(t, err)
@@ -67,11 +67,11 @@ func TestEmailRepo_Upsert_Duplicate(t *testing.T) {
 		Status:     domain.StatusNew,
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
-	require.NoError(t, r.Upsert(ctx, base))
+	require.NoError(t, r.Upsert(ctx, &base))
 
 	updated := base
 	updated.Subject = "Updated"
-	require.NoError(t, r.Upsert(ctx, updated))
+	require.NoError(t, r.Upsert(ctx, &updated))
 
 	got, err := r.GetByAccountAndUID(ctx, "acc1", 10)
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestEmailRepo_UpdateStatus(t *testing.T) {
 		Status:     domain.StatusNew,
 		ReceivedAt: time.Now().UTC().Truncate(time.Second),
 	}
-	require.NoError(t, r.Upsert(ctx, e))
+	require.NoError(t, r.Upsert(ctx, &e))
 	require.NoError(t, r.UpdateStatus(ctx, e.ID, domain.StatusNotified))
 
 	got, err := r.GetByAccountAndUID(ctx, "acc1", 5)
@@ -183,13 +183,13 @@ func TestEmailRepo_AccountIsolation(t *testing.T) {
 	e1 := base
 	e1.ID = "id-acc1"
 	e1.AccountID = "acc1"
-	require.NoError(t, r.Upsert(ctx, e1))
+	require.NoError(t, r.Upsert(ctx, &e1))
 
 	e2 := base
 	e2.ID = "id-acc2"
 	e2.AccountID = "acc2"
 	e2.Subject = "Different subject"
-	require.NoError(t, r.Upsert(ctx, e2))
+	require.NoError(t, r.Upsert(ctx, &e2))
 
 	got1, err := r.GetByAccountAndUID(ctx, "acc1", 1)
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestEmailRepo_MultipleEmails(t *testing.T) {
 			Status:     domain.StatusNew,
 			ReceivedAt: time.Now().UTC().Truncate(time.Second),
 		}
-		require.NoError(t, r.Upsert(ctx, e))
+		require.NoError(t, r.Upsert(ctx, &e))
 	}
 
 	for i := range 5 {
@@ -227,4 +227,61 @@ func TestEmailRepo_MultipleEmails(t *testing.T) {
 		require.NotNil(t, got, "expected email with uid %d", i+1)
 		assert.Equal(t, fmt.Sprintf("Email %d", i), got.Subject)
 	}
+}
+
+// Регрессия на баг, найденный в бою: письмо приходит повторно, планировщик
+// генерирует новый ID, а строка в базе сохраняет прежний. Раньше Upsert молча
+// оставлял вызывающему несуществующий ID, и первая же запись классификации
+// падала по внешнему ключу — письмо переобрабатывалось каждый цикл, а дайджест
+// оставался пустым.
+func TestEmailRepo_Upsert_DuplicateKeepsStoredID(t *testing.T) {
+	d := openTestDB(t)
+	r := NewEmailRepo(d)
+	ctx := context.Background()
+
+	stored := domain.Email{
+		ID:         "01STORED",
+		AccountID:  "acc1",
+		MessageUID: 42,
+		Subject:    "Original",
+		FromEmail:  "a@b.com",
+		Date:       time.Now().UTC().Truncate(time.Second),
+		Status:     domain.StatusNew,
+		ReceivedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, r.Upsert(ctx, &stored))
+
+	// Второй заход по тому же (account_id, message_uid), но с новым ID.
+	incoming := stored
+	incoming.ID = "01FRESH"
+	incoming.Subject = "Updated"
+	require.NoError(t, r.Upsert(ctx, &incoming))
+
+	assert.Equal(t, "01STORED", incoming.ID, "вызывающий должен получить ID сохранённой строки")
+
+	got, err := r.GetByAccountAndUID(ctx, "acc1", 42)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "01STORED", got.ID)
+	assert.Equal(t, "Updated", got.Subject)
+
+	// И главное: по этому ID теперь проходит запись, ссылающаяся на emails(id).
+	cr := NewClassificationRepo(d)
+	require.NoError(t, cr.Save(ctx, domain.Classification{
+		ID:           "01CLASS",
+		EmailID:      incoming.ID,
+		Level:        domain.LevelImportant,
+		Category:     domain.CategoryOther,
+		ClassifiedAt: time.Now().UTC(),
+		Source:       domain.SourceRuleBased,
+	}))
+}
+
+func TestEmailRepo_Upsert_NilReturnsError(t *testing.T) {
+	r := NewEmailRepo(openTestDB(t))
+
+	err := r.Upsert(context.Background(), nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil email")
 }

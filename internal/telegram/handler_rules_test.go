@@ -48,7 +48,7 @@ func newRuleHandler(t *testing.T) (
 
 func insertEmail(t *testing.T, er *repo.EmailRepo, id, from, listID string, uid uint32) {
 	t.Helper()
-	require.NoError(t, er.Upsert(context.Background(), domain.Email{
+	require.NoError(t, er.Upsert(context.Background(), &domain.Email{
 		ID: id, AccountID: "acc", MessageUID: uid, Subject: "Flash Sale: 50% off",
 		FromEmail: from, FromName: "S", Date: time.Now(),
 		Status: domain.StatusNotified, ReceivedAt: time.Now(), ListID: listID,

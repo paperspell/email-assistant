@@ -94,7 +94,7 @@ func TestScheduler_Backfill_SkipsAlreadyIngested(t *testing.T) {
 	require.NoError(t, sched.cfg.RuleRepo.Add(context.Background(), allowRule("vip@shop.com")))
 
 	// Simulate a prior interrupted backfill that already ingested UID 40.
-	require.NoError(t, emailRepo.Upsert(context.Background(), domain.Email{
+	require.NoError(t, emailRepo.Upsert(context.Background(), &domain.Email{
 		ID: "pre", AccountID: backfillAcct, MessageUID: 40, Subject: "hi",
 		FromEmail: "vip@shop.com", Status: domain.StatusNew, Date: time.Now(), ReceivedAt: time.Now(),
 	}))

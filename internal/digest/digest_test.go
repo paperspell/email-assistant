@@ -42,7 +42,7 @@ func addIgnored(t *testing.T, er *repo.EmailRepo, cr *repo.ClassificationRepo, i
 		Status:     domain.StatusIgnored,
 		ReceivedAt: time.Date(2026, 6, 26, 10, 0, 0, 0, time.UTC),
 	}
-	require.NoError(t, er.Upsert(ctx, e))
+	require.NoError(t, er.Upsert(ctx, &e))
 	require.NoError(t, er.UpdateStatusDecidedBy(ctx, id, domain.StatusIgnored, decidedBy))
 	if summary != "" {
 		require.NoError(t, cr.Save(ctx, domain.Classification{

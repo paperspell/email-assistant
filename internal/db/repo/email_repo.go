@@ -20,8 +20,18 @@ func NewEmailRepo(db *sql.DB) *EmailRepo {
 	return &EmailRepo{db: db}
 }
 
-// Upsert inserts or replaces an email record.
-func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
+// Upsert inserts an email, or updates the mutable fields of the row that already
+// holds this (account_id, message_uid).
+// On conflict the stored row keeps the id it was inserted with, so e.ID is
+// rewritten to it. Callers address the email by id afterwards — classifications
+// reference emails(id), and status updates match on it — and a generated id
+// that never reached the table would leave those writes pointing at nothing.
+func (r *EmailRepo) Upsert(ctx context.Context, e *domain.Email) error {
+	if e == nil {
+		// The daemon runs unattended; a mistaken nil should surface as an error
+		// rather than take the process down.
+		return errors.New("upsert email: nil email")
+	}
 	const q = `
 		INSERT INTO emails
 			(id, account_id, message_uid, subject, from_email, from_name, date, status, received_at, language, list_id)
@@ -33,18 +43,21 @@ func (r *EmailRepo) Upsert(ctx context.Context, e domain.Email) error {
 			date       = excluded.date,
 			language   = excluded.language,
 			list_id    = excluded.list_id
+		RETURNING id
 	`
-	_, err := r.db.ExecContext(ctx, q,
+	var storedID string
+	err := r.db.QueryRowContext(ctx, q,
 		e.ID, e.AccountID, e.MessageUID,
 		e.Subject, e.FromEmail, e.FromName,
 		e.Date.UTC().Format(time.RFC3339),
 		string(e.Status),
 		e.ReceivedAt.UTC().Format(time.RFC3339),
 		e.Language, e.ListID,
-	)
+	).Scan(&storedID)
 	if err != nil {
 		return fmt.Errorf("upsert email: %w", err)
 	}
+	e.ID = storedID
 	return nil
 }
 

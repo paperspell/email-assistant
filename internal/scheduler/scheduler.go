@@ -332,7 +332,7 @@ func (s *Scheduler) processMessage(
 		ListID:     msg.ListID,
 	}
 
-	if err := s.cfg.EmailRepo.Upsert(ctx, e); err != nil {
+	if err := s.cfg.EmailRepo.Upsert(ctx, &e); err != nil {
 		return err
 	}
 

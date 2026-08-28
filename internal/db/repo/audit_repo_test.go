@@ -14,7 +14,7 @@ import (
 
 func seedEmail(t *testing.T, r *EmailRepo, id string) {
 	t.Helper()
-	require.NoError(t, r.Upsert(context.Background(), domain.Email{
+	require.NoError(t, r.Upsert(context.Background(), &domain.Email{
 		ID:         id,
 		AccountID:  "acc1",
 		MessageUID: 1,
