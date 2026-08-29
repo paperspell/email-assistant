@@ -628,3 +628,35 @@ func TestScheduler_MultiAccount_IndependentSyncState(t *testing.T) {
 	assert.Len(t, notifierA.getSent(), 1)
 	assert.Len(t, notifierB.getSent(), 1)
 }
+
+// TestScheduler_Poll_NotifiesEachEmailOnce guards the invariant the user cares
+// about: one email, one notification. Observed in production as the same UID
+// notified on four consecutive polls, because the sync watermark is written
+// once per batch and a replay re-ran the whole batch.
+func TestScheduler_Poll_NotifiesEachEmailOnce(t *testing.T) {
+	msg := email.Message{UID: 61380, Subject: "Apify access", FromEmail: "no-reply@google.com", Date: time.Now()}
+	provider := &mockProvider{messages: []email.Message{msg}}
+	notifier := &mockNotifier{}
+	sched, _, syncRepo := newTestSchedulerWithLevel(t, provider, notifier, domain.LevelIgnore)
+
+	// First poll: baseline is established, so nothing is notified yet.
+	runOnce(t, sched)
+	// Rewind the watermark to replay the same message, exactly what a mid-batch
+	// restart or an unwritten watermark produces.
+	require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
+		AccountID: "test@example.com", LastUID: msg.UID - 1, SyncedAt: time.Now().UTC(),
+	}))
+
+	runOnce(t, sched)
+	first := len(notifier.getSent())
+
+	// Replay twice more; the message must not be announced again.
+	for range 2 {
+		require.NoError(t, syncRepo.Upsert(context.Background(), domain.SyncState{
+			AccountID: "test@example.com", LastUID: msg.UID - 1, SyncedAt: time.Now().UTC(),
+		}))
+		runOnce(t, sched)
+	}
+
+	assert.Equal(t, first, len(notifier.getSent()), "письмо уведомляется ровно один раз")
+}

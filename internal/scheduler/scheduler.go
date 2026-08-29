@@ -133,8 +133,11 @@ func (s *Scheduler) pollWithBackoff(ctx context.Context) {
 	bo.MaxElapsedTime = 2 * time.Minute
 
 	notify := func(err error, d time.Duration) {
-		s.cfg.Logger.Debug("poll error, retrying",
-			"account_id", s.cfg.AccountID, "err", err.Error(), "retry_in", d)
+		// Warn, not debug: a failing poll leaves the sync watermark unwritten, so
+		// the next cycle replays the batch. At debug level that stays invisible on
+		// a default install and the replay looks like the daemon misbehaving.
+		s.cfg.Logger.Warn(fmt.Errorf("poll error, retrying: %w", err),
+			"account_id", s.cfg.AccountID, "retry_in", d)
 	}
 
 	err := backoff.RetryNotify(func() error {
@@ -316,6 +319,19 @@ func (s *Scheduler) backfillFirstRun(ctx context.Context) error {
 func (s *Scheduler) processMessage(
 	ctx context.Context, msg email.Message, rules []domain.FilterRule, clauseTexts []string,
 ) error {
+	// A message must be notified at most once. The sync watermark alone cannot
+	// guarantee that: it is written after the whole batch, so a restart or a
+	// failure mid-poll replays everything processed since the last write, and the
+	// mailbox can hand the same UID back. Decide from stored state instead —
+	// anything already decided (notified or ignored) is skipped outright.
+	if existing, err := s.cfg.EmailRepo.GetByAccountAndUID(ctx, s.cfg.AccountID, msg.UID); err != nil {
+		return err
+	} else if existing != nil && existing.Status != domain.StatusNew {
+		s.cfg.Logger.Debug("already processed, skipping",
+			"account_id", s.cfg.AccountID, "uid", msg.UID, "status", string(existing.Status))
+		return nil
+	}
+
 	lang := features.DetectLanguage(msg.Subject)
 
 	e := domain.Email{
