@@ -94,3 +94,31 @@ func TestFormatMessage_ShowsReasonsWhenNoSummary(t *testing.T) {
 	assert.Contains(t, msg, "Why:")
 	assert.Contains(t, msg, "baseline: +40")
 }
+
+func TestFormatMessage_Layout(t *testing.T) {
+	e := domain.Email{
+		Subject: "Payment receipt", FromEmail: "billing@github.com", FromName: "GitHub",
+		Date: time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC), Language: "pl",
+	}
+	c := domain.Classification{Level: domain.LevelImportant, Score: 82, Summary: "Списание за подписку."}
+
+	out := formatMessage(e, c, "anovikau@gmail.com", "anovikau@gmail.com")
+
+	// Тема идёт сразу за строкой важности, отдельным блоком.
+	assert.Regexp(t, `Importance: important \(score 82\)</b>\n\nSubject: Payment receipt\n\n`, out)
+	// Адрес аккаунта не задваивается, когда имя совпадает с адресом.
+	assert.Contains(t, out, "Account: anovikau@gmail.com\n")
+	assert.NotContains(t, out, "anovikau@gmail.com &lt;anovikau@gmail.com&gt;")
+	// Язык оригинала — отдельной строкой, резюме — через пустую строку.
+	assert.Contains(t, out, "Original language: Polish")
+	assert.Contains(t, out, "\n\nSummary: Списание за подписку.")
+}
+
+func TestFormatMessage_UnknownLanguageOmitsLine(t *testing.T) {
+	e := domain.Email{Subject: "s", FromEmail: "a@b.com", Date: time.Now(), Language: "und"}
+	c := domain.Classification{Level: domain.LevelMaybe, Score: 40, Summary: "x"}
+
+	out := formatMessage(e, c, "", "a@b.com")
+
+	assert.NotContains(t, out, "Original language:")
+}

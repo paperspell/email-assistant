@@ -17,6 +17,9 @@ type ClassifyRequest struct {
 	Language           string
 	IsReply            bool
 	HasListUnsubscribe bool
+	// SummaryLanguage is the language the summary must be written in, e.g.
+	// "Russian". Empty leaves the model's default (English).
+	SummaryLanguage string
 	// IgnoreClauses are per-account natural-language ignore instructions appended
 	// to the system prompt. Empty for accounts with no active clauses.
 	IgnoreClauses []string
@@ -46,7 +49,7 @@ you must return a JSON object with these fields:
              "social" | "other"
   score    : integer 0-100 (your confidence-weighted importance)
   reasons  : array of short strings explaining the key signals
-  summary  : one or two plain-English sentences describing what this email is about
+  summary  : one or two plain sentences describing what this email is about
 
 Scoring guide:
   90-100 critical  - immediate action required
@@ -60,12 +63,22 @@ Reply with JSON only, no prose.`
 // SystemPrompt returns the shared system prompt plus any active per-account
 // ignore clauses. Clauses are rendered as a bounded, clearly-delimited list so
 // the model treats matching mail as not important.
-func SystemPrompt(ignoreClauses []string) string {
-	if len(ignoreClauses) == 0 {
+func SystemPrompt(ignoreClauses []string, summaryLanguage string) string {
+	if len(ignoreClauses) == 0 && summaryLanguage == "" {
 		return systemPrompt
 	}
 	var b strings.Builder
 	b.WriteString(systemPrompt)
+	if summaryLanguage != "" {
+		// Only the summary is translated: level, category and reasons stay in the
+		// fixed vocabulary the caller parses.
+		fmt.Fprintf(&b, "\n\nWrite the \"summary\" field in %s, "+
+			"whatever language the email itself is in. "+
+			"Leave every other field exactly as specified above.", summaryLanguage)
+	}
+	if len(ignoreClauses) == 0 {
+		return b.String()
+	}
 	b.WriteString("\n\nAdditional user-defined ignore rules " +
 		"(treat matching mail as not important, i.e. level \"ignore\"):\n")
 	for _, c := range ignoreClauses {

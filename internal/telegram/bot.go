@@ -126,21 +126,25 @@ func formatMessage(e domain.Email, c domain.Classification, accountName, account
 	date := e.Date.UTC().Format("02 Jan 2006 15:04 UTC")
 
 	// Message is sent with HTML parse mode, so dynamic content must be escaped.
+	// Layout: the subject sits directly under the importance line, because that
+	// pair alone decides whether the message is worth opening. Addresses and date
+	// form the second block, the summary a third — each separated by a blank line.
 	body := fmt.Sprintf(
-		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\n",
+		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\nSubject: %s\n\n",
 		importanceIcon(c.Level), html.EscapeString(string(c.Level)), c.Score,
+		html.EscapeString(e.Subject),
 	)
 	if label := accountLabel(accountName, accountEmail); label != "" {
 		body += "Account: " + html.EscapeString(label) + "\n"
 	}
-	body += fmt.Sprintf(
-		"From: %s\nSubject: %s\nDate: %s",
-		html.EscapeString(from), html.EscapeString(e.Subject), date,
-	)
+	body += "From: " + html.EscapeString(from) + "\nDate: " + date
+	if lang := languageName(e.Language); lang != "" {
+		body += "\nOriginal language: " + html.EscapeString(lang)
+	}
 	if c.Summary != "" {
-		body += "\nSummary: " + html.EscapeString(c.Summary)
+		body += "\n\nSummary: " + html.EscapeString(c.Summary)
 	} else {
-		body += "\nWhy: " + html.EscapeString(strings.Join(c.Reason, "; "))
+		body += "\n\nWhy: " + html.EscapeString(strings.Join(c.Reason, "; "))
 	}
 	return body
 }
@@ -150,12 +154,50 @@ func formatMessage(e domain.Email, c domain.Classification, accountName, account
 // keeps accounts distinguishable when several share the same name.
 func accountLabel(name, email string) string {
 	switch {
+	// The setup wizard defaults the account name to the address, which rendered
+	// as "user@example.com <user@example.com>".
+	case name == email:
+		return email
 	case name != "" && email != "":
 		return name + " <" + email + ">"
 	case email != "":
 		return email
 	default:
 		return name
+	}
+}
+
+// languageName renders a detected ISO 639-1 code as a readable name for the
+// notification. "und" means detection failed (or the subject was empty), which
+// is not worth a line of its own; unknown codes are shown as-is.
+func languageName(code string) string {
+	switch code {
+	case "", "und":
+		return ""
+	case "ru":
+		return "Russian"
+	case "en":
+		return "English"
+	case "pl":
+		return "Polish"
+	case "de":
+		return "German"
+	case "fr":
+		return "French"
+	case "es":
+		return "Spanish"
+	case "it":
+		return "Italian"
+	case "uk":
+		return "Ukrainian"
+	case "be":
+		return "Belarusian"
+	case "pt":
+		return "Portuguese"
+	case "nl":
+		return "Dutch"
+	default:
+		return strings.ToUpper(code)
 	}
 }
 

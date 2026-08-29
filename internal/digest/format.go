@@ -13,13 +13,12 @@ func FormatTelegram(d Digest, accountEmail string) string {
 	fmt.Fprintf(&b, "🗂 Daily digest — %s — %s\n\n", accountEmail, d.Date)
 
 	if len(d.Items) == 0 {
-		b.WriteString("No items needing a glance.\n\n")
+		b.WriteString("No mail was filtered today.\n\n")
 	}
+	// One line per email — number, score, subject — separated by blank lines, so
+	// the list stays scannable on a phone and `/important <n>` keeps working.
 	for _, it := range d.Items {
-		fmt.Fprintf(&b, "%d. %s — %q\n", it.SeqNo, senderLabel(it), it.Email.Subject)
-		if it.Summary != "" {
-			fmt.Fprintf(&b, "   %s\n", it.Summary)
-		}
+		fmt.Fprintf(&b, "%d. [%d] %s\n\n", it.SeqNo, it.Score, it.Email.Subject)
 	}
 
 	if d.Counter.Total > 0 {
@@ -54,11 +53,4 @@ func FormatCounter(d Digest) string {
 		fmt.Fprintf(&b, "   %-24s %d\n", "other / manual", d.Counter.Other)
 	}
 	return strings.TrimRight(b.String(), "\n")
-}
-
-func senderLabel(it Item) string {
-	if it.Email.FromName != "" {
-		return it.Email.FromName
-	}
-	return it.Email.FromEmail
 }

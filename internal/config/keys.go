@@ -14,6 +14,9 @@ const (
 	KeyTelegramUpdateOffset = "telegram.update_offset"
 
 	KeyNotificationMinImportance = "notification.min_importance"
+	// KeyNotificationLanguage is the language summaries are written in, e.g.
+	// "Russian". Empty keeps the model's default (English).
+	KeyNotificationLanguage = "notification.language"
 
 	// KeyPollDefaultInterval is the default scan interval seeded for new accounts.
 	// Each account stores its own interval in the accounts table and may override it.
