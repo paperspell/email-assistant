@@ -62,6 +62,15 @@ func Build(
 		return Digest{}, err
 	}
 
+	ids := make([]string, 0, len(emails))
+	for _, e := range emails {
+		ids = append(ids, e.ID)
+	}
+	byEmail, err := classRepo.GetAllByEmailIDs(ctx, ids)
+	if err != nil {
+		return Digest{}, err
+	}
+
 	d := Digest{AccountID: accountID, Date: date, Counter: Counter{ByRule: map[string]int{}}}
 	seq := 0
 	for _, e := range emails {
@@ -69,7 +78,7 @@ func Build(
 		// rule- and baseline-filtered mail cannot be audited by the person whose
 		// rules produced it. The counter below still breaks the decisions down.
 		seq++
-		summary, score := llmVerdict(ctx, classRepo, e.ID)
+		summary, score := verdict(byEmail[e.ID])
 		d.Items = append(d.Items, Item{SeqNo: seq, Email: e, Summary: summary, Score: score})
 
 		switch {
@@ -89,20 +98,17 @@ func Build(
 	return d, nil
 }
 
-// llmVerdict returns the summary and score for an email, preferring the LLM
-// classification over the rule-based one. Zero values when neither exists.
-func llmVerdict(ctx context.Context, classRepo *repo.ClassificationRepo, emailID string) (string, int) {
-	all, err := classRepo.GetAllByEmailID(ctx, emailID)
-	if err != nil {
-		return "", 0
-	}
+// verdict picks the summary and score to show for one email, preferring the LLM
+// classification over the rule-based one. Zero values when there is none.
+func verdict(all []domain.Classification) (string, int) {
 	var summary string
 	var score int
 	var haveLLM bool
 	for _, c := range all {
-		isLLM := strings.HasPrefix(string(c.Source), "llm")
-		if isLLM && !haveLLM {
-			summary, score, haveLLM = c.Summary, c.Score, true
+		if strings.HasPrefix(c.Source, domain.SourceLLM) {
+			if !haveLLM {
+				summary, score, haveLLM = c.Summary, c.Score, true
+			}
 			continue
 		}
 		if !haveLLM {

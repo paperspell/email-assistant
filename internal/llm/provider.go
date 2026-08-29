@@ -60,6 +60,20 @@ Scoring guide:
 Be conservative: err toward lower scores for unknown senders and marketing content.
 Reply with JSON only, no prose.`
 
+// sanitizeLanguage trims a configured language name and collapses anything that
+// could restructure the prompt (line breaks, quotes) into spaces. Language names
+// are short, so the value is also bounded.
+func sanitizeLanguage(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.NewReplacer("\n", " ", "\r", " ", "\"", " ", "`", " ").Replace(s)
+	s = strings.TrimSpace(s)
+	const maxLen = 40
+	if len(s) > maxLen {
+		s = s[:maxLen]
+	}
+	return s
+}
+
 // SystemPrompt returns the shared system prompt plus any active per-account
 // ignore clauses. Clauses are rendered as a bounded, clearly-delimited list so
 // the model treats matching mail as not important.
@@ -69,12 +83,13 @@ func SystemPrompt(ignoreClauses []string, summaryLanguage string) string {
 	}
 	var b strings.Builder
 	b.WriteString(systemPrompt)
-	if summaryLanguage != "" {
+	if lang := sanitizeLanguage(summaryLanguage); lang != "" {
 		// Only the summary is translated: level, category and reasons stay in the
-		// fixed vocabulary the caller parses.
-		fmt.Fprintf(&b, "\n\nWrite the \"summary\" field in %s, "+
+		// fixed vocabulary the caller parses. The value is quoted and stripped of
+		// line breaks so a stray setting cannot restructure the prompt.
+		fmt.Fprintf(&b, "\n\nWrite the \"summary\" field in %q, "+
 			"whatever language the email itself is in. "+
-			"Leave every other field exactly as specified above.", summaryLanguage)
+			"Leave every other field exactly as specified above.", lang)
 	}
 	if len(ignoreClauses) == 0 {
 		return b.String()

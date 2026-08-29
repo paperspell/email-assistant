@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/paperspell/email-assistant/internal/domain"
@@ -71,6 +72,48 @@ func (r *ClassificationRepo) GetByEmailIDAndSource(
 	`
 	row := r.db.QueryRowContext(ctx, q, emailID, source)
 	return scanClassification(row)
+}
+
+// GetAllByEmailIDs returns the classifications of several emails in one query,
+// keyed by email id. The digest needs a verdict for every message of the day, and
+// asking per email turned that into one query per message.
+func (r *ClassificationRepo) GetAllByEmailIDs(
+	ctx context.Context, emailIDs []string,
+) (map[string][]domain.Classification, error) {
+	out := make(map[string][]domain.Classification, len(emailIDs))
+	if len(emailIDs) == 0 {
+		return out, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(emailIDs)), ",")
+	args := make([]any, 0, len(emailIDs))
+	for _, id := range emailIDs {
+		args = append(args, id)
+	}
+	//nolint:gosec // placeholders are generated "?" markers, never caller input.
+	q := `
+		SELECT id, email_id, level, category, score, reason, classified_at, source, summary
+		FROM classifications
+		WHERE email_id IN (` + placeholders + `)
+		ORDER BY (source = 'rule_based') DESC
+	`
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query classifications: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		c, err := scanClassificationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[c.EmailID] = append(out[c.EmailID], *c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return out, nil
 }
 
 // GetAllByEmailID retrieves all classifications for a given email.

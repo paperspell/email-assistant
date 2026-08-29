@@ -285,3 +285,39 @@ func TestEmailRepo_Upsert_NilReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil email")
 }
+
+func TestClassificationRepo_GetAllByEmailIDs(t *testing.T) {
+	d := openTestDB(t)
+	er, cr := NewEmailRepo(d), NewClassificationRepo(d)
+	ctx := context.Background()
+
+	for _, id := range []string{"e1", "e2"} {
+		e := domain.Email{
+			ID: id, AccountID: "acc1", MessageUID: uint32(len(id) + int(id[1])),
+			Subject: "s", FromEmail: "a@b.com", Date: time.Now(), Status: domain.StatusNew,
+			ReceivedAt: time.Now(),
+		}
+		require.NoError(t, er.Upsert(ctx, &e))
+		require.NoError(t, cr.Save(ctx, domain.Classification{
+			ID: "c-" + id, EmailID: e.ID, Level: domain.LevelMaybe, Category: domain.CategoryOther,
+			Score: 42, ClassifiedAt: time.Now(), Source: domain.SourceLLM + ":mock", Summary: "s-" + id,
+		}))
+	}
+
+	got, err := cr.GetAllByEmailIDs(ctx, []string{"e1", "e2", "missing"})
+
+	require.NoError(t, err)
+	assert.Len(t, got, 2, "письма без классификаций просто отсутствуют в карте")
+	require.Len(t, got["e1"], 1)
+	assert.Equal(t, "s-e1", got["e1"][0].Summary)
+	assert.Equal(t, 42, got["e2"][0].Score)
+}
+
+func TestClassificationRepo_GetAllByEmailIDs_Empty(t *testing.T) {
+	cr := NewClassificationRepo(openTestDB(t))
+
+	got, err := cr.GetAllByEmailIDs(context.Background(), nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}

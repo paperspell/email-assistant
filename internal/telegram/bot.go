@@ -169,7 +169,9 @@ func accountLabel(name, email string) string {
 
 // languageName renders a detected ISO 639-1 code as a readable name for the
 // notification. "und" means detection failed (or the subject was empty), which
-// is not worth a line of its own; unknown codes are shown as-is.
+// is not worth a line of its own. A code with no mapping is uppercased ("sv" ->
+// "SV"); the detector only ever emits two-letter ISO 639-1 codes, so this cannot
+// meet a region-qualified tag.
 func languageName(code string) string {
 	switch code {
 	case "", "und":
