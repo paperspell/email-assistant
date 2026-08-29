@@ -649,6 +649,9 @@ func TestScheduler_Poll_NotifiesEachEmailOnce(t *testing.T) {
 
 	runOnce(t, sched)
 	first := len(notifier.getSent())
+	// Assert the replay actually notified once: without this the test would also
+	// pass if the guard wrongly skipped everything and nothing was ever sent.
+	require.Equal(t, 1, first, "письмо должно быть уведомлено ровно один раз")
 
 	// Replay twice more; the message must not be announced again.
 	for range 2 {

@@ -319,11 +319,15 @@ func (s *Scheduler) backfillFirstRun(ctx context.Context) error {
 func (s *Scheduler) processMessage(
 	ctx context.Context, msg email.Message, rules []domain.FilterRule, clauseTexts []string,
 ) error {
-	// A message must be notified at most once. The sync watermark alone cannot
-	// guarantee that: it is written after the whole batch, so a restart or a
-	// failure mid-poll replays everything processed since the last write, and the
-	// mailbox can hand the same UID back. Decide from stored state instead —
-	// anything already decided (notified or ignored) is skipped outright.
+	// Skip a message whose decision is already persisted. The sync watermark
+	// cannot carry that on its own: it is written after the whole batch, so a
+	// restart or a failure mid-poll replays everything processed since the last
+	// write, and each replay used to send another notification.
+	//
+	// This narrows the window rather than closing it: a crash between a delivered
+	// Telegram message and UpdateStatus leaves the row StatusNew, and the replay
+	// notifies again. Closing that needs the send and the status write to share a
+	// transaction, which the Telegram API cannot join.
 	if existing, err := s.cfg.EmailRepo.GetByAccountAndUID(ctx, s.cfg.AccountID, msg.UID); err != nil {
 		return err
 	} else if existing != nil && existing.Status != domain.StatusNew {
