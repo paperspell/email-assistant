@@ -52,7 +52,7 @@ func addIgnored(t *testing.T, er *repo.EmailRepo, cr *repo.ClassificationRepo, i
 	}
 }
 
-func TestBuild_ListsLLMLowCountsRest(t *testing.T) {
+func TestBuild_ListsEveryIgnoredEmail(t *testing.T) {
 	er, cr := setup(t)
 	addIgnored(t, er, cr, "1", "llm:low", "A marketing email.")
 	addIgnored(t, er, cr, "2", "llm:low", "A newsletter.")
@@ -64,9 +64,12 @@ func TestBuild_ListsLLMLowCountsRest(t *testing.T) {
 	d, err := Build(context.Background(), er, cr, testAcct, testDate, time.UTC)
 	require.NoError(t, err)
 
-	require.Len(t, d.Items, 2, "only llm:low items are listed")
+	// Every ignored email is listed now, whoever decided it; the counter keeps
+	// the provenance breakdown.
+	require.Len(t, d.Items, 6, "all ignored emails are listed")
 	assert.Equal(t, 1, d.Items[0].SeqNo)
 	assert.Equal(t, "A marketing email.", d.Items[0].Summary)
+	assert.Equal(t, 6, d.Items[5].SeqNo, "numbering is continuous across decision sources")
 
 	assert.Equal(t, 4, d.Counter.Total)
 	assert.Equal(t, 2, d.Counter.ByRule["rule:r1"])
@@ -116,12 +119,20 @@ func TestNextFire_HonoursTimezone(t *testing.T) {
 func TestFormatTelegram_IncludesItemsAndCounter(t *testing.T) {
 	d := Digest{
 		AccountID: testAcct, Date: testDate,
-		Items:   []Item{{SeqNo: 1, Email: domain.Email{FromName: "LinkedIn", Subject: "5 jobs"}, Summary: "Job alert."}},
+		Items: []Item{
+			{SeqNo: 1, Email: domain.Email{FromName: "LinkedIn", Subject: "5 jobs"}, Summary: "Job alert.", Score: 22},
+			{SeqNo: 2, Email: domain.Email{FromName: "Shop", Subject: "Sale"}, Score: 5},
+		},
 		Counter: Counter{Total: 3},
 	}
 	out := FormatTelegram(d, testAcct)
-	assert.Contains(t, out, "1. LinkedIn — \"5 jobs\"")
-	assert.Contains(t, out, "Job alert.")
+
+	// Одна строка на письмо: номер, счёт, тема — и пустая строка между письмами.
+	assert.Contains(t, out, "1. [22] 5 jobs\n\n")
+	assert.Contains(t, out, "2. [5] Sale")
+	// Ни отправителя, ни резюме в списке больше нет.
+	assert.NotContains(t, out, "LinkedIn")
+	assert.NotContains(t, out, "Job alert.")
 	assert.Contains(t, out, "+3 filtered")
 	assert.Contains(t, out, "/important")
 }

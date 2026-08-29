@@ -67,6 +67,9 @@ type OAuthConfig struct {
 // NotificationConfig controls when notifications are sent.
 type NotificationConfig struct {
 	MinImportance string // "critical", "important", "maybe" — default "important"
+	// Language is the language summaries are written in, e.g. "Russian".
+	// Empty leaves them in English.
+	Language string
 }
 
 // TelegramConfig holds Telegram bot configuration.
@@ -96,6 +99,7 @@ func DefaultValues() map[string]string {
 	return map[string]string{
 		KeyLogLevel:                  d.LogLevel,
 		KeyNotificationMinImportance: d.Notification.MinImportance,
+		KeyNotificationLanguage:      d.Notification.Language,
 		KeyLLMScoreDivergenceWarn:    strconv.Itoa(d.LLM.ScoreDivergenceWarn),
 		KeyContentMode:               d.Content.Mode,
 		KeyPollDefaultInterval:       d.Poll.DefaultInterval.String(),
@@ -145,6 +149,7 @@ var KnownKeys = map[string]bool{
 	KeyTelegramChatID:            true,
 	KeyTelegramUpdateOffset:      true,
 	KeyNotificationMinImportance: true,
+	KeyNotificationLanguage:      true,
 	KeyPollDefaultInterval:       true,
 	KeyFilterBaselineFloor:       true,
 	KeyDigestTime:                true,
@@ -226,6 +231,9 @@ func applySettings(cfg *Config, s map[string]string) {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.Telegram.ChatID = id
 		}
+	}
+	if v := s[KeyNotificationLanguage]; v != "" {
+		cfg.Notification.Language = v
 	}
 	if v := s[KeyNotificationMinImportance]; v != "" {
 		cfg.Notification.MinImportance = v

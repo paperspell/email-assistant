@@ -192,6 +192,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			Filter:              importanceFilter,
 			LLMProvider:         llmProvider,
 			ContentMode:         cfg.Content.Mode,
+			SummaryLanguage:     cfg.Notification.Language,
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
 			Notifier:            bot,

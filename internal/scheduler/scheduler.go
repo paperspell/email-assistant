@@ -26,18 +26,21 @@ import (
 
 // Config holds all dependencies for the Scheduler.
 type Config struct {
-	AccountID           string
-	AccountName         string
-	AccountEmail        string
-	PollInterval        time.Duration
-	MinImportance       domain.ImportanceLevel
-	EmailRepo           *repo.EmailRepo
-	SyncRepo            *repo.SyncStateRepo
-	ClassificationRepo  *repo.ClassificationRepo
-	AuditRepo           *repo.AuditRepo
-	Filter              *importance.Filter
-	LLMProvider         llm.Provider // nil when LLM is disabled
-	ContentMode         string
+	AccountID          string
+	AccountName        string
+	AccountEmail       string
+	PollInterval       time.Duration
+	MinImportance      domain.ImportanceLevel
+	EmailRepo          *repo.EmailRepo
+	SyncRepo           *repo.SyncStateRepo
+	ClassificationRepo *repo.ClassificationRepo
+	AuditRepo          *repo.AuditRepo
+	Filter             *importance.Filter
+	LLMProvider        llm.Provider // nil when LLM is disabled
+	ContentMode        string
+	// SummaryLanguage is the language LLM summaries are written in. Empty
+	// leaves them in English.
+	SummaryLanguage     string
 	ScoreDivergenceWarn int
 	Provider            email.Provider
 	Notifier            telegram.Notifier
@@ -385,6 +388,7 @@ func (s *Scheduler) processMessage(
 	if s.cfg.LLMProvider != nil {
 		req := buildLLMRequest(msg, lang, s.cfg.ContentMode)
 		req.IgnoreClauses = clauseTexts
+		req.SummaryLanguage = s.cfg.SummaryLanguage
 		llmResult, llmErr := s.cfg.LLMProvider.Classify(ctx, req)
 		if llmErr != nil {
 			s.cfg.Logger.Warn(fmt.Errorf("llm classify: %w", llmErr),

@@ -370,8 +370,16 @@ func configureNotifications(
 		"  Min importance (critical/important/maybe)",
 		current[config.KeyNotificationMinImportance],
 	)
+	// Summaries are written in this language whatever language the email is in;
+	// the notification also shows the original language separately.
+	language := promptText(
+		sc,
+		"  Summary language (e.g. English, Russian)",
+		current[config.KeyNotificationLanguage],
+	)
 	return saveSettings(ctx, r, map[string]string{
 		config.KeyNotificationMinImportance: minImportance,
+		config.KeyNotificationLanguage:      strings.TrimSpace(language),
 	})
 }
 
