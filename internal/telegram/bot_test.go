@@ -170,3 +170,25 @@ func TestFormatMessage_RomanianIsNamed(t *testing.T) {
 
 	assert.Contains(t, out, "Original language: Romanian")
 }
+
+// Both changes meet in the notification: the body extracted by the MIME walk is
+// inserted into a template rendered from the Russian catalog. Body text is
+// user-controlled and the message is sent with HTML parse mode, so markup that
+// survived extraction must still be escaped here.
+func TestFormatMessage_EscapesExtractedBody(t *testing.T) {
+	ru, err := i18n.NewPrinter("ru")
+	require.NoError(t, err)
+
+	e := domain.Email{
+		Subject: "<script>alert(1)</script>", FromEmail: "a@b.com",
+		Date: time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC), Language: "ro",
+	}
+	c := domain.Classification{Level: domain.LevelCritical, Score: 91, Summary: "Тело: <b>жирный</b> & прочее"}
+
+	out := formatMessage(ru, e, c, "", "a@b.com")
+
+	assert.Contains(t, out, "&lt;script&gt;")
+	assert.NotContains(t, out, "<script>")
+	assert.Contains(t, out, "&lt;b&gt;жирный&lt;/b&gt; &amp; прочее")
+	assert.Contains(t, out, "Язык оригинала: румынский")
+}
