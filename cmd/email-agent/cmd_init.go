@@ -437,7 +437,7 @@ func configureLLM(
 	fmt.Println("LLM Classification")
 	fmt.Println("  (press Enter at provider prompt to disable LLM)")
 
-	provider := promptText(sc, "  Provider (anthropic/openai)", current[config.KeyLLMProvider])
+	provider := promptText(sc, "  Provider (anthropic/openai/gemini)", current[config.KeyLLMProvider])
 	provider = strings.ToLower(strings.TrimSpace(provider))
 
 	settings := map[string]string{config.KeyLLMProvider: provider}
@@ -464,8 +464,16 @@ func configureLLM(
 		if apiKey != "" {
 			settings[config.KeyLLMOpenAIAPIKey] = apiKey
 		}
+	case "gemini":
+		apiKey, err := promptPassword("  Google AI Studio API key (Enter to keep unchanged)", sc)
+		if err != nil {
+			return fmt.Errorf("read api key: %w", err)
+		}
+		if apiKey != "" {
+			settings[config.KeyLLMGeminiAPIKey] = apiKey
+		}
 	default:
-		return fmt.Errorf("unknown provider %q (valid: anthropic, openai)", provider)
+		return fmt.Errorf("unknown provider %q (valid: anthropic, openai, gemini)", provider)
 	}
 
 	model, err := promptModel(sc, provider, current[config.KeyLLMModel])

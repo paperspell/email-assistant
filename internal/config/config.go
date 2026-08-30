@@ -80,9 +80,10 @@ type TelegramConfig struct {
 
 // LLMConfig controls optional LLM-based classification.
 type LLMConfig struct {
-	Provider            string // "anthropic" | "openai" | "" (disabled)
+	Provider            string // "anthropic" | "openai" | "gemini" | "" (disabled)
 	AnthropicAPIKey     string
 	OpenAIAPIKey        string
+	GeminiAPIKey        string
 	Model               string // empty means use provider default
 	ScoreDivergenceWarn int    // log WARN when |llm_score - rule_score| >= this
 }
@@ -157,6 +158,7 @@ var KnownKeys = map[string]bool{
 	KeyLLMProvider:               true,
 	KeyLLMAnthropicAPIKey:        true,
 	KeyLLMOpenAIAPIKey:           true,
+	KeyLLMGeminiAPIKey:           true,
 	KeyLLMModel:                  true,
 	KeyLLMScoreDivergenceWarn:    true,
 	KeyContentMode:               true,
@@ -267,6 +269,9 @@ func applySettings(cfg *Config, s map[string]string) {
 	if v := s[KeyLLMOpenAIAPIKey]; v != "" {
 		cfg.LLM.OpenAIAPIKey = v
 	}
+	if v := s[KeyLLMGeminiAPIKey]; v != "" {
+		cfg.LLM.GeminiAPIKey = v
+	}
 	if v := s[KeyLLMModel]; v != "" {
 		cfg.LLM.Model = v
 	}
@@ -358,6 +363,9 @@ func (c *Config) validate() error {
 	}
 	if c.LLM.Provider == "openai" && c.LLM.OpenAIAPIKey == "" {
 		return fmt.Errorf("config: %s is required when provider is openai", KeyLLMOpenAIAPIKey)
+	}
+	if c.LLM.Provider == "gemini" && c.LLM.GeminiAPIKey == "" {
+		return fmt.Errorf("config: %s is required when provider is gemini", KeyLLMGeminiAPIKey)
 	}
 	return nil
 }
