@@ -1,0 +1,297 @@
+# Russian. Plural forms follow CLDR: one (1, 21, 31…), few (2–4, 22–24…),
+# many (0, 5–20…), other (fractions).
+
+# --- Notification -----------------------------------------------------------
+
+[notification_header]
+other = "📧 Новое письмо"
+
+[notification_importance]
+other = "Важность: {{.Level}} (оценка {{.Score}})"
+
+[field_subject]
+other = "Тема"
+
+[field_account]
+other = "Аккаунт"
+
+[field_from]
+other = "От"
+
+[field_date]
+other = "Дата"
+
+[field_original_language]
+other = "Язык оригинала"
+
+[field_summary]
+other = "Резюме"
+
+[field_why]
+other = "Почему"
+
+[field_category]
+other = "Категория"
+
+[field_reasons]
+other = "Причины"
+
+# --- Importance levels ------------------------------------------------------
+
+[level_critical]
+other = "критично"
+
+[level_important]
+other = "важно"
+
+[level_maybe]
+other = "возможно важно"
+
+[level_ignore]
+other = "не важно"
+
+# --- Detected language of the incoming email --------------------------------
+
+[lang_be]
+other = "белорусский"
+
+[lang_de]
+other = "немецкий"
+
+[lang_en]
+other = "английский"
+
+[lang_es]
+other = "испанский"
+
+[lang_fr]
+other = "французский"
+
+[lang_he]
+other = "иврит"
+
+[lang_it]
+other = "итальянский"
+
+[lang_kk]
+other = "казахский"
+
+[lang_pl]
+other = "польский"
+
+[lang_pt]
+other = "португальский"
+
+[lang_ro]
+other = "румынский"
+
+[lang_ru]
+other = "русский"
+
+[lang_uk]
+other = "украинский"
+
+# --- Buttons ----------------------------------------------------------------
+
+[btn_handled]
+other = "✓ Обработано"
+
+[btn_ignore]
+other = "✗ Игнорировать"
+
+[btn_details]
+other = "ℹ Подробности"
+
+[btn_ign_sender]
+other = "Этого отправителя"
+
+[btn_ign_domain]
+other = "Этот домен"
+
+[btn_ign_listid]
+other = "Эту рассылку"
+
+[btn_ign_subject]
+other = "Такую тему"
+
+[btn_ign_reason]
+other = "Указать причину"
+
+[btn_ign_once]
+other = "Только это письмо"
+
+[btn_cancel]
+other = "Отмена"
+
+[btn_subj_use]
+other = "Подходит"
+
+[btn_subj_edit]
+other = "Изменить"
+
+[btn_prom_rmrule]
+other = "Удалить правило"
+
+[btn_prom_allow]
+other = "Добавить исключение"
+
+[btn_prom_keep]
+other = "Оставить правило"
+
+[btn_prom_yes]
+other = "Да, всегда важно"
+
+[btn_prom_no]
+other = "Нет, только в этот раз"
+
+[btn_digest_read]
+other = "✓ Прочитано"
+
+[btn_digest_remove]
+other = "🗑 В корзину"
+
+# --- Digest -----------------------------------------------------------------
+
+[digest_title]
+other = "🗂 Дневная сводка — {{.Account}} — {{.Date}}"
+
+[digest_empty]
+other = "Сегодня ничего не отфильтровано."
+
+[digest_filtered]
+one = "ещё {{.Count}} письмо отфильтровано правилами"
+few = "ещё {{.Count}} письма отфильтровано правилами"
+many = "ещё {{.Count}} писем отфильтровано правилами"
+other = "ещё {{.Count}} письма отфильтровано правилами"
+
+[digest_keep_hint]
+other = "Ответьте /important <н,…>, чтобы оставить письмо."
+
+[digest_reply_hint]
+other = "Ответьте на сообщение со сводкой командой /important <н,…>."
+
+[digest_important_usage]
+other = "Как пользоваться: /important 3,7"
+
+[digest_promoted]
+one = "{{.Count}} письмо помечено как важное."
+few = "{{.Count}} письма помечены как важные."
+many = "{{.Count}} писем помечены как важные."
+other = "{{.Count}} письма помечены как важные."
+
+[digest_marked_read]
+one = "✓ {{.Count}} письмо помечено прочитанным."
+few = "✓ {{.Count}} письма помечены прочитанными."
+many = "✓ {{.Count}} писем помечены прочитанными."
+other = "✓ {{.Count}} письма помечены прочитанными."
+
+[digest_moved_trash]
+one = "✓ {{.Count}} письмо перемещено в корзину."
+few = "✓ {{.Count}} письма перемещены в корзину."
+many = "✓ {{.Count}} писем перемещены в корзину."
+other = "✓ {{.Count}} письма перемещены в корзину."
+
+[promote_hidden_by_rule]
+other = "Помечено важным. Письмо было скрыто правилом ({{.Rule}})."
+
+[promote_always_important]
+other = "Помечено важным. Всегда считать письма от {{.Sender}} важными?"
+
+# --- Details ----------------------------------------------------------------
+
+[details_title]
+other = "ℹ Подробности письма"
+
+[details_body_unavailable]
+other = "(текст письма недоступен)"
+
+[details_llm_classification]
+other = "Оценка модели: {{.Level}} (оценка {{.Score}})"
+
+[details_rule_classification]
+other = "Оценка по правилам: {{.Level}} (оценка {{.Score}})"
+
+[details_classification]
+other = "Оценка: {{.Level}} (оценка {{.Score}})"
+
+# --- Ignore / rule flows ----------------------------------------------------
+
+[flow_ignored_no_rule]
+other = "Письмо проигнорировано, правило не создано."
+
+[flow_no_list_id]
+other = "У этого письма нет заголовка List-Id."
+
+[flow_reason_unavailable]
+other = "Правила по описанию сейчас недоступны."
+
+[flow_subject_unavailable]
+other = "Правила по теме сейчас недоступны."
+
+[flow_send_reason]
+other = "Отправьте одним сообщением причину, по которой игнорировать похожие письма."
+
+[flow_send_subject_pattern]
+other = "Отправьте одним сообщением шаблон темы."
+
+[flow_suggested_pattern]
+other = "Предлагаемый шаблон: {{.Pattern}} (подходит к темам этого отправителя)."
+
+[flow_nothing_to_confirm]
+other = "Подтверждать нечего."
+
+[flow_subject_cancelled]
+other = "Отменено. Письмо остаётся проигнорированным, правило по теме не создано."
+
+[flow_clause_added]
+other = "Правило добавлено — модель будет учитывать его для новых писем."
+
+[flow_rule_added_sender]
+other = "Правило добавлено: игнорировать отправителя {{.Value}}."
+
+[flow_rule_added_domain]
+other = "Правило добавлено: игнорировать домен {{.Value}}."
+
+[flow_rule_added_list]
+other = "Правило добавлено: игнорировать рассылку {{.Value}}."
+
+[flow_rule_added_subject]
+other = "Правило добавлено: игнорировать тему ~ {{.Pattern}}."
+
+[flow_rule_added_subject_from]
+other = "Правило добавлено: игнорировать тему ~ {{.Pattern}} от {{.Sender}}."
+
+[flow_rule_removed]
+other = "Правило удалено."
+
+[flow_email_unavailable]
+other = "Письмо больше недоступно."
+
+[flow_allow_sender_added]
+other = "Добавлено: письма от {{.Sender}} всегда считать важными."
+
+[flow_ok]
+other = "Готово."
+
+# --- Re-authorization alert -------------------------------------------------
+
+[reauth_title]
+other = "⚠️ Истёк доступ к почте"
+
+[reauth_body]
+other = "Доступ к этому ящику через Google истёк, и я больше не могу его проверять. Новые письма с этого аккаунта не будут приходить, пока вы не подтвердите доступ заново."
+
+[reauth_steps_title]
+other = "Что сделать на машине, где запущен email-agent:"
+
+[reauth_step_edit]
+other = "Выполните {{.Command}}"
+
+[reauth_step_consent]
+other = "Ответьте y на вопрос «Re-authorize with Google now?» и подтвердите доступ в браузере."
+
+[reauth_step_restart]
+other = "Перезапустите демон: {{.Command}}"
+
+[reauth_note_testing]
+other = "В режиме «Testing» доступ Gmail истекает примерно раз в 7 дней."

@@ -9,6 +9,7 @@ import (
 
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 	"github.com/paperspell/email-assistant/internal/pkg/timex"
@@ -57,6 +58,9 @@ type Handler struct {
 	Mailboxes          map[string]Mailbox     // keyed by account ID
 	Accounts           map[string]AccountInfo // labels for promoted notifications
 	Logger             log.Logger
+	// P renders replies and buttons in the configured language. Nil falls back
+	// to English rather than to raw message ids.
+	P *i18n.Printer
 }
 
 // Handle dispatches a single Telegram update (callback query or message).
@@ -138,7 +142,7 @@ func (h *Handler) handleIgnore(ctx context.Context, msgID int64, e *domain.Email
 		h.Logger.Info("email marked ignored via feedback", "email_id", e.ID, "from", e.FromEmail)
 		return h.Bot.RemoveKeyboard(msgID)
 	}
-	return h.Bot.EditKeyboard(msgID, ignoreMenu(e.ID, e.ListID != ""))
+	return h.Bot.EditKeyboard(msgID, ignoreMenu(h.P, e.ID, e.ListID != ""))
 }
 
 // ignoreWithProvenance applies the negative feedback bump, marks the email
@@ -196,12 +200,15 @@ func (h *Handler) handleDigestBulk(ctx context.Context, action, digestID string,
 	if err := h.Bot.RemoveKeyboard(msgID); err != nil {
 		h.Logger.Error(err, "digest_id", digestID)
 	}
-	verb := "marked read"
+	// One full sentence per action: a verb interpolated into a shared sentence
+	// cannot be translated correctly (agreement and word order differ per
+	// language).
+	msgKey := "digest_marked_read"
 	if action == "digest_remove" {
-		verb = "moved to Trash"
+		msgKey = "digest_moved_trash"
 	}
 	h.Logger.Info("digest bulk action", "action", action, "digest_id", digestID, "count", count)
-	return h.Bot.SendFollowUp(ctx, fmt.Sprintf("✓ %d %s.", count, verb))
+	return h.Bot.SendFollowUp(ctx, h.P.N(msgKey, count))
 }
 
 // markRead flags the email as read in the mailbox. Best-effort: a missing
@@ -222,7 +229,7 @@ func (h *Handler) handleDetails(ctx context.Context, e *domain.Email) error {
 		return err
 	}
 	body := h.fetchBody(ctx, e)
-	text := formatDetails(e, all, body)
+	text := formatDetails(h.P, e, all, body)
 	return h.Bot.SendFollowUp(ctx, text)
 }
 
@@ -274,7 +281,7 @@ func parseCallbackData(data string) (action, emailID string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-func formatDetails(e *domain.Email, all []domain.Classification, body string) string {
+func formatDetails(p *i18n.Printer, e *domain.Email, all []domain.Classification, body string) string {
 	from := e.FromEmail
 	if e.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
@@ -282,14 +289,18 @@ func formatDetails(e *domain.Email, all []domain.Classification, body string) st
 	date := e.Date.UTC().Format("02 Jan 2006 15:04 UTC")
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "ℹ Email details\n\nFrom: %s\nSubject: %s\nDate: %s\n", from, e.Subject, date)
+	fmt.Fprintf(&b, "%s\n\n%s: %s\n%s: %s\n%s: %s\n",
+		p.T("details_title"),
+		p.T("field_from"), from,
+		p.T("field_subject"), e.Subject,
+		p.T("field_date"), date)
 
 	// Body (fetched on demand). Empty when the provider is unavailable or the
 	// message has no text part.
 	if body != "" {
 		fmt.Fprintf(&b, "\n%s\n", body)
 	} else {
-		fmt.Fprint(&b, "\n(body unavailable)\n")
+		fmt.Fprintf(&b, "\n%s\n", p.T("details_body_unavailable"))
 	}
 
 	// Separate LLM and rule-based results
@@ -305,25 +316,31 @@ func formatDetails(e *domain.Email, all []domain.Classification, body string) st
 
 	// Show LLM result first if available
 	if llmClass != nil {
-		fmt.Fprintf(&b, "\nLLM classification: %s (score %d)\nCategory: %s\n",
-			string(llmClass.Level), llmClass.Score, string(llmClass.Category))
+		fmt.Fprintf(&b, "\n%s\n%s: %s\n",
+			p.T("details_llm_classification",
+				"Level", levelName(p, llmClass.Level), "Score", llmClass.Score),
+			p.T("field_category"), string(llmClass.Category))
 		if llmClass.Summary != "" {
-			fmt.Fprintf(&b, "Summary: %s\n", llmClass.Summary)
+			fmt.Fprintf(&b, "%s: %s\n", p.T("field_summary"), llmClass.Summary)
 		}
 	}
 
 	// Always show rule-based result
 	if ruleClass != nil {
-		fmt.Fprintf(&b, "\nRule-based classification: %s (score %d)\nReasons:\n",
-			string(ruleClass.Level), ruleClass.Score)
+		fmt.Fprintf(&b, "\n%s\n%s:\n",
+			p.T("details_rule_classification",
+				"Level", levelName(p, ruleClass.Level), "Score", ruleClass.Score),
+			p.T("field_reasons"))
 		for _, r := range ruleClass.Reason {
 			fmt.Fprintf(&b, "  • %s\n", r)
 		}
 	} else if llmClass == nil && len(all) > 0 {
 		// Fallback: single classification of unknown source
 		c := all[0]
-		fmt.Fprintf(&b, "\nClassification: %s (score %d)\nCategory: %s\nReasons:\n",
-			string(c.Level), c.Score, string(c.Category))
+		fmt.Fprintf(&b, "\n%s\n%s: %s\n%s:\n",
+			p.T("details_classification", "Level", levelName(p, c.Level), "Score", c.Score),
+			p.T("field_category"), string(c.Category),
+			p.T("field_reasons"))
 		for _, r := range c.Reason {
 			fmt.Fprintf(&b, "  • %s\n", r)
 		}

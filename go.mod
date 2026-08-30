@@ -3,6 +3,7 @@ module github.com/paperspell/email-assistant
 go 1.26.3
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.34
 	github.com/anthropics/anthropic-sdk-go v1.50.1
 	github.com/cenkalti/backoff/v4 v4.3.0
@@ -10,6 +11,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/lmittmann/tint v1.1.3
 	github.com/ncruces/go-sqlite3 v0.35.0
+	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pemistahl/lingua-go v1.4.0
 	github.com/pressly/goose/v3 v3.27.1
@@ -21,6 +23,7 @@ require (
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/term v0.44.0
+	golang.org/x/text v0.38.0
 )
 
 require (
