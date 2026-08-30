@@ -663,3 +663,75 @@ func TestScheduler_Poll_NotifiesEachEmailOnce(t *testing.T) {
 
 	assert.Equal(t, first, len(notifier.getSent()), "письмо уведомляется ровно один раз")
 }
+
+// --- деньги проходят без блокировки ---
+
+func moneyScheduler(
+	t *testing.T, provider email.Provider, notifier *mockNotifier, llmProvider llm.Provider,
+) *Scheduler {
+	t.Helper()
+	// Порог important — как в дефолтной установке: именно он глушил счета,
+	// которые классификатор оценивал как maybe.
+	sched, _, _ := newTestSchedulerFull(t, provider, notifier, domain.LevelImportant, llmProvider, 0)
+	return sched
+}
+
+func TestScheduler_MoneyMail_NotifiesDespiteMinImportance(t *testing.T) {
+	baseline := email.Message{UID: 10, Subject: "old", FromEmail: "a@b.com", Date: time.Now()}
+	invoice := email.Message{
+		UID: 11, Subject: "GitHub Invoice INV152315913",
+		FromEmail: "noreply@github.com", Date: time.Now(),
+	}
+	provider := &mockProvider{messages: []email.Message{baseline}}
+	notifier := &mockNotifier{}
+	llmProv := &mockLLMProvider{result: llm.ClassifyResult{
+		Level: domain.LevelMaybe, Category: domain.CategoryFinance, Score: 60, Summary: "Счёт за подписку.",
+	}}
+	sched := moneyScheduler(t, provider, notifier, llmProv)
+
+	runOnce(t, sched) // baseline
+	provider.messages = []email.Message{invoice}
+	runOnce(t, sched)
+
+	require.Len(t, notifier.getSent(), 1,
+		"письмо о списании уведомляет даже при уровне maybe и пороге important")
+	assert.Equal(t, "GitHub Invoice INV152315913", notifier.getSent()[0].Subject)
+}
+
+func TestScheduler_MoneyMail_BulkMarketingStillFiltered(t *testing.T) {
+	baseline := email.Message{UID: 10, Subject: "old", FromEmail: "a@b.com", Date: time.Now()}
+	promo := email.Message{
+		UID: 11, Subject: "Save 40% — pay less for hosting", FromEmail: "info@eml.example.com",
+		Date: time.Now(), Precedence: "bulk",
+	}
+	provider := &mockProvider{messages: []email.Message{baseline}}
+	notifier := &mockNotifier{}
+	llmProv := &mockLLMProvider{result: llm.ClassifyResult{
+		Level: domain.LevelMaybe, Category: domain.CategoryMarketing, Score: 35,
+	}}
+	sched := moneyScheduler(t, provider, notifier, llmProv)
+
+	runOnce(t, sched)
+	provider.messages = []email.Message{promo}
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent(), "массовая рассылка со словом pay не считается денежной")
+}
+
+func TestScheduler_MoneyMail_IgnoreLevelStaysFiltered(t *testing.T) {
+	baseline := email.Message{UID: 10, Subject: "old", FromEmail: "a@b.com", Date: time.Now()}
+	spam := email.Message{
+		UID: 11, Subject: "You won a payment of $1000",
+		FromEmail: "scam@x.com", Date: time.Now(),
+	}
+	provider := &mockProvider{messages: []email.Message{baseline}}
+	notifier := &mockNotifier{}
+	llmProv := &mockLLMProvider{result: llm.ClassifyResult{Level: domain.LevelIgnore, Score: 5}}
+	sched := moneyScheduler(t, provider, notifier, llmProv)
+
+	runOnce(t, sched)
+	provider.messages = []email.Message{spam}
+	runOnce(t, sched)
+
+	assert.Empty(t, notifier.getSent(), "обход порога не отменяет вердикт ignore")
+}

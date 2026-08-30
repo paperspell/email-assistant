@@ -1,5 +1,10 @@
 package features
 
+import (
+	"unicode"
+	"unicode/utf8"
+)
+
 // Each slice contains keywords for one semantic group across all supported languages:
 // English, Polish, Russian, Romanian, Italian, Belarusian, Ukrainian,
 // Spanish, Portuguese, French, German, Kazakh, Hebrew.
@@ -62,13 +67,46 @@ var keywordsMeeting = []string{
 	"פגישה", "שיחה", "תור", "הזמנה",
 }
 
+// keywordsMoney marks mail about money actually moving: a payment taken, an
+// invoice due, a receipt, a refund, a failed charge. It drives a threshold
+// bypass, so it is matched on whole words only and deliberately excludes short
+// or ambiguous stems ("pay", "due", "чек") that would fire on unrelated text.
+var keywordsMoney = []string{
+	// EN
+	"invoice", "payment", "receipt", "charged", "refund", "billing",
+	"overdue", "transaction", "debited", "subscription renewal",
+	// PL
+	"faktura", "płatność", "płatności", "rachunek", "zapłata", "obciążenie",
+	"opłata", "opłacie", "przelew",
+	// RU
+	"счёт", "счет", "оплата", "оплате", "платёж", "платеж", "квитанция",
+	"списание", "начисление", "задолженность",
+	// UK
+	"рахунок", "оплата", "платіж", "квитанція",
+	// BE
+	"рахунак", "аплата", "плацёж",
+	// DE
+	"rechnung", "zahlung", "beleg", "abbuchung",
+	// ES
+	"factura", "pago", "recibo", "cargo",
+	// FR
+	"facture", "paiement", "reçu", "prélèvement",
+	// IT
+	"fattura", "pagamento", "ricevuta", "addebito",
+	// PT
+	"fatura", "pagamento", "recibo", "cobrança",
+}
+
 var keywordsInvoice = []string{
 	// EN
 	"invoice", "payment", "bill", "receipt", "due", "overdue", "pay",
+	"charged", "refund", "billing", "transaction", "debited",
 	// PL
 	"faktura", "płatność", "rachunek", "zapłata", "przelew", "zaległy",
+	"obciążenie", "opłata", "zwrot środków",
 	// RU
-	"счет", "оплата", "платеж", "квитанция", "задолженность",
+	"счет", "счёт", "оплата", "платеж", "платёж", "квитанция", "задолженность",
+	"списание", "начисление", "чек", "возврат средств",
 	// RO
 	"factură", "plată", "chitanță", "scadent",
 	// IT
@@ -237,6 +275,50 @@ var keywordsSchool = []string{
 }
 
 // containsAny reports whether text contains any of the given keywords (case-insensitive).
+// containsAnyWord reports whether text contains any keyword as a whole word.
+// Unlike containsAny it will not match inside a longer word, so "charged" does
+// not fire on "discharged" and "чек" would not fire on "чек-лист". Boundaries
+// are unicode-aware: anything that is not a letter or digit separates words.
+func containsAnyWord(text string, keywords []string) bool {
+	lower := toLower(text)
+	for _, kw := range keywords {
+		if hasWord(lower, toLower(kw)) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasWord(haystack, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] != needle {
+			continue
+		}
+		if !isWordByte(haystack, i-1) && !isWordByte(haystack, i+len(needle)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWordByte reports whether the rune starting at or covering index i is a
+// letter or digit. Indexes outside the string count as separators.
+func isWordByte(s string, i int) bool {
+	if i < 0 || i >= len(s) {
+		return false
+	}
+	// Walk back to the start of the rune so multi-byte letters are judged whole.
+	start := i
+	for start > 0 && !utf8.RuneStart(s[start]) {
+		start--
+	}
+	r, _ := utf8.DecodeRuneInString(s[start:])
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
 func containsAny(text string, keywords []string) bool {
 	lower := toLower(text)
 	for _, kw := range keywords {
