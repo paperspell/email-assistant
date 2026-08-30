@@ -103,7 +103,7 @@ automatically. If the refresh token is revoked or expires, re-run
 
 | Key | Values | Default | Description |
 |-----|--------|---------|-------------|
-| `filter.baseline_floor` | `ignore` `maybe` `important` `critical` | `maybe` | Importance level at or below which the baseline scorer drops mail without calling the LLM |
+| `filter.baseline_floor` | `ignore` `maybe` `important` `critical` | `ignore` | Mail the baseline scorer rates **below** this level is dropped without calling the LLM. The default `ignore` is the lowest level, so nothing is dropped. Raise it to cut LLM spend on a busy mailbox, at the cost of mail the keyword scorer misjudges. Mail about money movement is exempt and always reaches the classifier |
 | `digest.time` | `HH:MM` | `20:00` | Time of day the daily digest of unimportant mail is sent (per-account override via `account` digest time) |
 | `digest.timezone` | IANA name / `Local` / `UTC` | system local | Timezone for the digest send time and day boundaries |
 

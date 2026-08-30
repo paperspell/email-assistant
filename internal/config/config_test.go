@@ -122,11 +122,18 @@ func TestPollIntervalOrDefault(t *testing.T) {
 	assert.Equal(t, 20*time.Minute, PollIntervalOrDefault("20m"))
 }
 
-func TestLoad_BaselineFloor_DefaultsToMaybe(t *testing.T) {
+func TestLoad_BaselineFloor_DefaultsToNoGate(t *testing.T) {
+	// Умолчание намеренно не отсекает ничего до модели: эвристика по ключевым
+	// словам не настраивается под все языки, на которых пользователям приходит
+	// почта, и молча отбрасывает письма, о существовании которых владелец не
+	// узнает. Порог поднимается осознанно, ради экономии на большом ящике.
 	sr, ar := setupRepos(t, validSettings(), []domain.Account{validAccount()})
+
 	cfg, err := Load(context.Background(), sr, ar)
+
 	require.NoError(t, err)
-	assert.Equal(t, domain.LevelMaybe, cfg.Filter.BaselineFloor)
+	assert.Equal(t, domain.LevelIgnore, cfg.Filter.BaselineFloor,
+		"из коробки гейта перед LLM быть не должно")
 }
 
 func TestLoad_BaselineFloor_FromSetting(t *testing.T) {
