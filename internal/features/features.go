@@ -15,9 +15,13 @@ type EmailFeatures struct {
 	IsBulkPrecedence   bool // Precedence: bulk or list
 
 	// Subject keyword groups
-	HasUrgentKeyword     bool
-	HasMeetingKeyword    bool
-	HasInvoiceKeyword    bool
+	HasUrgentKeyword  bool
+	HasMeetingKeyword bool
+	HasInvoiceKeyword bool
+	// HasMoneyKeyword marks mail about money actually moving. Unlike the other
+	// keyword flags it matches whole words only: it drives a threshold bypass,
+	// so "discharged" must not read as "charged".
+	HasMoneyKeyword      bool
 	HasSecurityKeyword   bool
 	HasDeadlineKeyword   bool
 	HasInterviewKeyword  bool

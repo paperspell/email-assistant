@@ -23,6 +23,7 @@ func Extract(msg email.Message, senderScore, domainScore, senderSeenCount int) E
 		HasUrgentKeyword:     containsAny(subject, keywordsUrgent),
 		HasMeetingKeyword:    containsAny(subject, keywordsMeeting),
 		HasInvoiceKeyword:    containsAny(subject, keywordsInvoice),
+		HasMoneyKeyword:      containsAnyWord(subject, keywordsMoney),
 		HasSecurityKeyword:   containsAny(subject, keywordsSecurity),
 		HasDeadlineKeyword:   containsAny(subject, keywordsDeadline),
 		HasInterviewKeyword:  containsAny(subject, keywordsInterview),

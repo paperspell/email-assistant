@@ -538,11 +538,12 @@ func levelRank(level domain.ImportanceLevel) int {
 // Bulk sends are excluded, so a marketing blast that merely mentions prices does
 // not qualify; the keyword list itself is subject-only and transactional.
 func isMoneyMail(msg email.Message) bool {
-	if msg.Precedence == "bulk" || msg.Precedence == "list" {
-		return false
-	}
-	// Sender history is irrelevant here — only the subject keywords are.
-	return features.Extract(msg, 0, 0, 0).HasInvoiceKeyword
+	// Sender history is irrelevant here — only the subject keywords and the
+	// precedence header are. Extract owns the canonical parsing of both: it
+	// normalises case and whitespace and counts "junk" as bulk, which a
+	// hand-rolled comparison here would miss.
+	f := features.Extract(msg, 0, 0, 0)
+	return f.HasMoneyKeyword && !f.IsBulkPrecedence
 }
 
 func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
