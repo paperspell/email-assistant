@@ -275,3 +275,53 @@ func TestLoad_EnvOverride_LogLevel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "warn", cfg.LogLevel)
 }
+
+func loadLLM(t *testing.T, extra map[string]string) *Config {
+	t.Helper()
+	s := validSettings()
+	for k, v := range extra {
+		s[k] = v
+	}
+	sr, ar := setupRepos(t, s, []domain.Account{validAccount()})
+	cfg, err := Load(context.Background(), sr, ar)
+	require.NoError(t, err)
+	return cfg
+}
+
+func TestLLMConfig_ModelIsResolvedPerProvider(t *testing.T) {
+	cfg := loadLLM(t, map[string]string{
+		KeyLLMProvider:       "gemini",
+		KeyLLMGeminiAPIKey:   "k",
+		KeyLLMAnthropicModel: "claude-sonnet-5",
+		KeyLLMOpenAIModel:    "gpt-5.6-terra",
+		KeyLLMGeminiModel:    "gemini-2.5-flash",
+	})
+
+	// Switching llm.provider alone must be enough: each provider keeps its own
+	// model, so a Claude id can never be sent to Gemini.
+	assert.Equal(t, "gemini-2.5-flash", cfg.LLM.Model)
+	assert.Equal(t, "claude-sonnet-5", cfg.LLM.AnthropicModel)
+	assert.Equal(t, "gpt-5.6-terra", cfg.LLM.OpenAIModel)
+}
+
+func TestLLMConfig_LegacyModelStillDrivesTheActiveProvider(t *testing.T) {
+	// An install predating the per-provider keys holds only llm.model.
+	cfg := loadLLM(t, map[string]string{
+		KeyLLMProvider:        "anthropic",
+		KeyLLMAnthropicAPIKey: "k",
+		KeyLLMModel:           "claude-sonnet-5",
+	})
+
+	assert.Equal(t, "claude-sonnet-5", cfg.LLM.Model)
+}
+
+func TestLLMConfig_PerProviderModelWinsOverLegacy(t *testing.T) {
+	cfg := loadLLM(t, map[string]string{
+		KeyLLMProvider:     "openai",
+		KeyLLMOpenAIAPIKey: "k",
+		KeyLLMModel:        "claude-sonnet-5", // stale leftover from before the switch
+		KeyLLMOpenAIModel:  "gpt-5.6-terra",
+	})
+
+	assert.Equal(t, "gpt-5.6-terra", cfg.LLM.Model)
+}
