@@ -65,10 +65,13 @@ var keywordsMeeting = []string{
 var keywordsInvoice = []string{
 	// EN
 	"invoice", "payment", "bill", "receipt", "due", "overdue", "pay",
+	"charged", "refund", "billing", "transaction", "debited",
 	// PL
 	"faktura", "płatność", "rachunek", "zapłata", "przelew", "zaległy",
+	"obciążenie", "opłata", "zwrot środków",
 	// RU
-	"счет", "оплата", "платеж", "квитанция", "задолженность",
+	"счет", "счёт", "оплата", "платеж", "платёж", "квитанция", "задолженность",
+	"списание", "начисление", "чек", "возврат средств",
 	// RO
 	"factură", "plată", "chitanță", "scadent",
 	// IT

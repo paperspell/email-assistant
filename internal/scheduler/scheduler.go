@@ -376,7 +376,8 @@ func (s *Scheduler) processMessage(
 	if err := s.cfg.ClassificationRepo.Save(ctx, ruleClass); err != nil {
 		return err
 	}
-	if levelRank(ruleClass.Level) < levelRank(s.cfg.BaselineFloor) {
+	money := isMoneyMail(msg)
+	if !money && levelRank(ruleClass.Level) < levelRank(s.cfg.BaselineFloor) {
 		return s.ignoreEmail(ctx, e, msg, "baseline",
 			"level", string(ruleClass.Level), "score", ruleClass.Score,
 			"reason", strings.Join(ruleClass.Reason, "; "))
@@ -430,7 +431,10 @@ func (s *Scheduler) processMessage(
 	}
 
 	// 4. Final notification decision uses the LLM result (or rule-based if LLM was skipped/failed).
-	if !s.shouldNotify(classification.Level) {
+	// Money mail bypasses the configured threshold, but only when the classifier
+	// still sees something in it: an "ignore" verdict is respected.
+	moneyOverride := money && levelRank(classification.Level) >= levelRank(domain.LevelMaybe)
+	if !s.shouldNotify(classification.Level) && !moneyOverride {
 		decidedBy := "baseline"
 		if llmDecided {
 			decidedBy = "llm:low"
@@ -522,6 +526,23 @@ func levelRank(level domain.ImportanceLevel) int {
 	default: // LevelIgnore and unknown
 		return 0
 	}
+}
+
+// isMoneyMail reports whether a message is about money actually moving on the
+// user's accounts — a payment taken, an invoice due, a receipt, a refund, a
+// failed charge. Such mail must never be dropped by a mechanical threshold: the
+// cost of missing a charge is far higher than the cost of one extra
+// notification, and a tool used without configuration cannot rely on the owner
+// having written a rule for it.
+//
+// Bulk sends are excluded, so a marketing blast that merely mentions prices does
+// not qualify; the keyword list itself is subject-only and transactional.
+func isMoneyMail(msg email.Message) bool {
+	if msg.Precedence == "bulk" || msg.Precedence == "list" {
+		return false
+	}
+	// Sender history is irrelevant here — only the subject keywords are.
+	return features.Extract(msg, 0, 0, 0).HasInvoiceKeyword
 }
 
 func (s *Scheduler) shouldNotify(level domain.ImportanceLevel) bool {
