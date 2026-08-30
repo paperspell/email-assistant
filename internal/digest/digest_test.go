@@ -11,6 +11,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/i18n"
 )
 
 const (
@@ -125,7 +126,7 @@ func TestFormatTelegram_IncludesItemsAndCounter(t *testing.T) {
 		},
 		Counter: Counter{Total: 3},
 	}
-	out := FormatTelegram(d, testAcct)
+	out := FormatTelegram(i18n.English(), d, testAcct)
 
 	// Одна строка на письмо: номер, счёт, тема — и пустая строка между письмами.
 	assert.Contains(t, out, "1. [22] 5 jobs\n\n")

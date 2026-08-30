@@ -9,21 +9,25 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/i18n"
 )
 
 // Bot implements Notifier using the Telegram Bot API.
 type Bot struct {
 	bot    *gotgbot.Bot
 	chatID int64
+	// p renders every user-facing string in the configured language. A nil
+	// printer falls back to English, so the bot still sends readable messages.
+	p *i18n.Printer
 }
 
-// NewBot creates a Telegram Bot notifier.
-func NewBot(token string, chatID int64) (*Bot, error) {
+// NewBot creates a Telegram Bot notifier that writes in the given locale.
+func NewBot(token string, chatID int64, p *i18n.Printer) (*Bot, error) {
 	bot, err := gotgbot.NewBot(token, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create telegram bot: %w", err)
 	}
-	return &Bot{bot: bot, chatID: chatID}, nil
+	return &Bot{bot: bot, chatID: chatID, p: p}, nil
 }
 
 // SendNewEmail sends a notification with an inline action keyboard.
@@ -31,8 +35,8 @@ func NewBot(token string, chatID int64) (*Bot, error) {
 func (b *Bot) SendNewEmail(
 	_ context.Context, e domain.Email, c domain.Classification, accountName, accountEmail string,
 ) (int64, error) {
-	msg, err := b.bot.SendMessage(b.chatID, formatMessage(e, c, accountName, accountEmail), &gotgbot.SendMessageOpts{
-		ReplyMarkup: actionKeyboard(e.ID),
+	msg, err := b.bot.SendMessage(b.chatID, formatMessage(b.p, e, c, accountName, accountEmail), &gotgbot.SendMessageOpts{
+		ReplyMarkup: actionKeyboard(b.p, e.ID),
 		ParseMode:   "HTML",
 	})
 	if err != nil {
@@ -46,8 +50,8 @@ func (b *Bot) SendNewEmail(
 func (b *Bot) SendDigest(_ context.Context, text, digestID string) (int64, error) {
 	keyboard := gotgbot.InlineKeyboardMarkup{
 		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
-			{Text: "✓ Mark read", CallbackData: "digest_read:" + digestID},
-			{Text: "🗑 Remove", CallbackData: "digest_remove:" + digestID},
+			{Text: b.p.T("btn_digest_read"), CallbackData: "digest_read:" + digestID},
+			{Text: b.p.T("btn_digest_remove"), CallbackData: "digest_remove:" + digestID},
 		}},
 	}
 	msg, err := b.bot.SendMessage(b.chatID, text, &gotgbot.SendMessageOpts{ReplyMarkup: keyboard})
@@ -118,35 +122,50 @@ func (b *Bot) SendAlert(_ context.Context, text string) error {
 	return nil
 }
 
-func formatMessage(e domain.Email, c domain.Classification, accountName, accountEmail string) string {
+func formatMessage(
+	p *i18n.Printer, e domain.Email, c domain.Classification, accountName, accountEmail string,
+) string {
 	from := e.FromEmail
 	if e.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", e.FromName, e.FromEmail)
 	}
 	date := e.Date.UTC().Format("02 Jan 2006 15:04 UTC")
 
-	// Message is sent with HTML parse mode, so dynamic content must be escaped.
+	// Message is sent with HTML parse mode. Catalog strings are authored here and
+	// safe; only dynamic content is escaped.
 	// Layout: the subject sits directly under the importance line, because that
 	// pair alone decides whether the message is worth opening. Addresses and date
 	// form the second block, the summary a third — each separated by a blank line.
 	body := fmt.Sprintf(
-		"📧 New email\n<b>%s Importance: %s (score %d)</b>\n\nSubject: %s\n\n",
-		importanceIcon(c.Level), html.EscapeString(string(c.Level)), c.Score,
-		html.EscapeString(e.Subject),
+		"%s\n<b>%s %s</b>\n\n%s: %s\n\n",
+		p.T("notification_header"),
+		importanceIcon(c.Level),
+		p.T("notification_importance", "Level", levelName(p, c.Level), "Score", c.Score),
+		p.T("field_subject"), html.EscapeString(e.Subject),
 	)
 	if label := accountLabel(accountName, accountEmail); label != "" {
-		body += "Account: " + html.EscapeString(label) + "\n"
+		body += p.T("field_account") + ": " + html.EscapeString(label) + "\n"
 	}
-	body += "From: " + html.EscapeString(from) + "\nDate: " + date
-	if lang := languageName(e.Language); lang != "" {
-		body += "\nOriginal language: " + html.EscapeString(lang)
+	body += p.T("field_from") + ": " + html.EscapeString(from) + "\n" + p.T("field_date") + ": " + date
+	if lang := p.EmailLanguage(e.Language); lang != "" {
+		body += "\n" + p.T("field_original_language") + ": " + html.EscapeString(lang)
 	}
 	if c.Summary != "" {
-		body += "\n\nSummary: " + html.EscapeString(c.Summary)
+		body += "\n\n" + p.T("field_summary") + ": " + html.EscapeString(c.Summary)
 	} else {
-		body += "\n\nWhy: " + html.EscapeString(strings.Join(c.Reason, "; "))
+		body += "\n\n" + p.T("field_why") + ": " + html.EscapeString(strings.Join(c.Reason, "; "))
 	}
 	return body
+}
+
+// levelName renders an importance level in the user's language. The stored and
+// prompt-facing values stay the English identifiers — only the display changes.
+func levelName(p *i18n.Printer, level domain.ImportanceLevel) string {
+	id := "level_" + string(level)
+	if name := p.T(id); name != id {
+		return name
+	}
+	return string(level)
 }
 
 // accountLabel renders the source account as "Name <email>", falling back to
@@ -164,42 +183,6 @@ func accountLabel(name, email string) string {
 		return email
 	default:
 		return name
-	}
-}
-
-// languageName renders a detected ISO 639-1 code as a readable name for the
-// notification. "und" means detection failed (or the subject was empty), which
-// is not worth a line of its own. A code with no mapping is uppercased ("sv" ->
-// "SV"); the detector only ever emits two-letter ISO 639-1 codes, so this cannot
-// meet a region-qualified tag.
-func languageName(code string) string {
-	switch code {
-	case "", "und":
-		return ""
-	case "ru":
-		return "Russian"
-	case "en":
-		return "English"
-	case "pl":
-		return "Polish"
-	case "de":
-		return "German"
-	case "fr":
-		return "French"
-	case "es":
-		return "Spanish"
-	case "it":
-		return "Italian"
-	case "uk":
-		return "Ukrainian"
-	case "be":
-		return "Belarusian"
-	case "pt":
-		return "Portuguese"
-	case "nl":
-		return "Dutch"
-	default:
-		return strings.ToUpper(code)
 	}
 }
 

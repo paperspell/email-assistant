@@ -4,16 +4,19 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/paperspell/email-assistant/internal/i18n"
 )
 
-// FormatTelegram renders the digest as the plain-text body of a Telegram message.
-// The Mark read / Remove buttons are attached separately by the bot.
-func FormatTelegram(d Digest, accountEmail string) string {
+// FormatTelegram renders the digest as the plain-text body of a Telegram message
+// in the user's language. The Mark read / Remove buttons are attached separately
+// by the bot.
+func FormatTelegram(p *i18n.Printer, d Digest, accountEmail string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🗂 Daily digest — %s — %s\n\n", accountEmail, d.Date)
+	fmt.Fprintf(&b, "%s\n\n", p.T("digest_title", "Account", accountEmail, "Date", d.Date))
 
 	if len(d.Items) == 0 {
-		b.WriteString("No mail was filtered today.\n\n")
+		b.WriteString(p.T("digest_empty") + "\n\n")
 	}
 	// One line per email — number, score, subject — separated by blank lines, so
 	// the list stays scannable on a phone and `/important <n>` keeps working.
@@ -22,10 +25,10 @@ func FormatTelegram(d Digest, accountEmail string) string {
 	}
 
 	if d.Counter.Total > 0 {
-		fmt.Fprintf(&b, "\n+%d filtered by rules/baseline", d.Counter.Total)
+		fmt.Fprintf(&b, "\n%s", p.N("digest_filtered", d.Counter.Total))
 	}
 	if len(d.Items) > 0 {
-		b.WriteString("\nReply /important <n,…> to keep an item.")
+		b.WriteString("\n" + p.T("digest_keep_hint"))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

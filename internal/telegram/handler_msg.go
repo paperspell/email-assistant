@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 	"github.com/paperspell/email-assistant/internal/pkg/timex"
 )
-
-const replyHint = "Reply to a digest message with /important <n,…>."
 
 // handleMessage dispatches message updates: free-text input the bot is waiting
 // for (ignore-reason / subject-edit), then the `/important` promote command.
@@ -37,26 +34,26 @@ func (h *Handler) handleMessage(ctx context.Context, msg *gotgbot.Message) error
 	}
 
 	if msg.ReplyToMessage == nil || h.DigestRepo == nil {
-		return h.Bot.SendFollowUp(ctx, replyHint)
+		return h.Bot.SendFollowUp(ctx, h.P.T("digest_reply_hint"))
 	}
 	d, err := h.DigestRepo.GetByTGMessageID(ctx, msg.ReplyToMessage.MessageId)
 	if err != nil {
 		return err
 	}
 	if d == nil {
-		return h.Bot.SendFollowUp(ctx, replyHint)
+		return h.Bot.SendFollowUp(ctx, h.P.T("digest_reply_hint"))
 	}
 
 	seqNos := parseSeqNos(strings.TrimPrefix(text, "/important"))
 	if len(seqNos) == 0 {
-		return h.Bot.SendFollowUp(ctx, "Usage: /important 3,7")
+		return h.Bot.SendFollowUp(ctx, h.P.T("digest_important_usage"))
 	}
 
 	promoted, err := h.promote(ctx, d, seqNos)
 	if err != nil {
 		return err
 	}
-	return h.Bot.SendFollowUp(ctx, fmt.Sprintf("Promoted %d item(s) to important.", promoted))
+	return h.Bot.SendFollowUp(ctx, h.P.N("digest_promoted", promoted))
 }
 
 // promote re-sends the selected digest items as important and marks them promoted.
@@ -127,11 +124,11 @@ func (h *Handler) sendPromoteFollowup(ctx context.Context, e *domain.Email, deci
 		return nil
 	}
 	if ruleID, ok := strings.CutPrefix(decidedBy, "rule:"); ok {
-		text := fmt.Sprintf("Promoted. It was hidden by rule (%s).", h.ruleDescription(ctx, e.AccountID, ruleID))
-		return h.Bot.SendPrompt(ctx, text, promoteRuleMenu(ruleID, e.ID))
+		text := h.P.T("promote_hidden_by_rule", "Rule", h.ruleDescription(ctx, e.AccountID, ruleID))
+		return h.Bot.SendPrompt(ctx, text, promoteRuleMenu(h.P, ruleID, e.ID))
 	}
-	text := fmt.Sprintf("Promoted. Always treat mail from %s as important?", e.FromEmail)
-	return h.Bot.SendPrompt(ctx, text, promoteAllowMenu(e.ID))
+	text := h.P.T("promote_always_important", "Sender", e.FromEmail)
+	return h.Bot.SendPrompt(ctx, text, promoteAllowMenu(h.P, e.ID))
 }
 
 // consumePending completes a pending free-text action with the user's message.
@@ -150,7 +147,7 @@ func (h *Handler) consumePending(ctx context.Context, p *domain.PendingAction, t
 			return err
 		}
 		h.Logger.Info("ignore clause added", "account_id", p.AccountID)
-		return h.Bot.SendFollowUp(ctx, "Ignore clause added (applies to future mail via the LLM).")
+		return h.Bot.SendFollowUp(ctx, h.P.T("flow_clause_added"))
 
 	case domain.PendingSubjectEdit:
 		if h.RuleRepo == nil {
@@ -174,7 +171,7 @@ func (h *Handler) consumePending(ctx context.Context, p *domain.PendingAction, t
 				h.Logger.Error(err, "email_id", e.ID)
 			}
 		}
-		return h.Bot.SendFollowUp(ctx, fmt.Sprintf("Rule added: ignore subject ~ %q.", text))
+		return h.Bot.SendFollowUp(ctx, h.P.T("flow_rule_added_subject", "Pattern", strconv.Quote(text)))
 
 	default:
 		return nil // subject_confirm is resolved by a button, not a message

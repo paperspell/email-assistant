@@ -12,6 +12,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/digest"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/i18n"
 )
 
 func newDigestCmd(dbPath *string) *cobra.Command {
@@ -35,12 +36,14 @@ func newDigestShowCmd(dbPath *string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				loc := digestLocation(ctx, repo.NewSettingsRepo(sqlDB))
+				settings := repo.NewSettingsRepo(sqlDB)
+				loc := digestLocation(ctx, settings)
+				printer := digestPrinter(ctx, settings)
 				d, err := digest.Build(ctx, repo.NewEmailRepo(sqlDB), repo.NewClassificationRepo(sqlDB), acc.ID, date, loc)
 				if err != nil {
 					return err
 				}
-				fmt.Println(digest.FormatTelegram(d, acc.Email))
+				fmt.Println(digest.FormatTelegram(printer, d, acc.Email))
 				fmt.Println()
 				fmt.Println(digest.FormatCounter(d))
 				return nil
@@ -71,6 +74,21 @@ func resolveDigestAccount(ctx context.Context, sqlDB *sql.DB, args []string) (*d
 }
 
 // digestLocation reads the configured digest timezone, defaulting to local time.
+// digestPrinter resolves the configured notification language, so `digest show`
+// previews the digest exactly as Telegram would receive it. A missing or broken
+// setting previews in English rather than failing the command.
+func digestPrinter(ctx context.Context, sr *repo.SettingsRepo) *i18n.Printer {
+	lang, err := sr.Get(ctx, config.KeyNotificationLanguage)
+	if err != nil {
+		return i18n.English()
+	}
+	p, err := i18n.NewPrinter(i18n.ResolveLocale(lang))
+	if err != nil {
+		return i18n.English()
+	}
+	return p
+}
+
 func digestLocation(ctx context.Context, sr *repo.SettingsRepo) *time.Location {
 	tz, err := sr.Get(ctx, config.KeyDigestTimezone)
 	if err == nil && tz != "" {

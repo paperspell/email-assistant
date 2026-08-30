@@ -20,6 +20,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/filter"
+	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
@@ -130,7 +131,16 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	importanceFilter := importance.NewFilter(senderRepo, domainRepo)
 	ruleEngine := filter.NewEngine()
 
-	bot, err := telegram.NewBot(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
+	// One setting drives both halves of the user's language: the Telegram text
+	// the bot writes itself, and the language it asks the LLM to summarise in.
+	locale := i18n.ResolveLocale(cfg.Notification.Language)
+	printer, err := i18n.NewPrinter(locale)
+	if err != nil {
+		return fmt.Errorf("load translations: %w", err)
+	}
+	logger.Info("notification language", "setting", cfg.Notification.Language, "locale", locale)
+
+	bot, err := telegram.NewBot(cfg.Telegram.BotToken, cfg.Telegram.ChatID, printer)
 	if err != nil {
 		return fmt.Errorf("create telegram bot: %w", err)
 	}
@@ -175,6 +185,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			ClassRepo:    classificationRepo,
 			DigestRepo:   digestRepo,
 			Sender:       bot,
+			Printer:      printer,
 			Logger:       logger.With("component", "digest", "account", acc.Email),
 		})
 		g.Go(func() error { return digestSched.Start(gCtx) })
@@ -192,11 +203,12 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			Filter:              importanceFilter,
 			LLMProvider:         llmProvider,
 			ContentMode:         cfg.Content.Mode,
-			SummaryLanguage:     cfg.Notification.Language,
+			SummaryLanguage:     i18n.LanguageName(locale),
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
 			Notifier:            bot,
 			Alerter:             bot,
+			Printer:             printer,
 			Logger:              logger.With("component", "scheduler", "account", acc.Email),
 			RuleRepo:            ruleRepo,
 			ClauseRepo:          clauseRepo,
@@ -219,6 +231,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		PendingRepo:        pendingRepo,
 		Mailboxes:          mailboxes,
 		Accounts:           accountInfos,
+		P:                  printer,
 		Logger:             logger.With("component", "telegram_handler"),
 	}
 

@@ -141,3 +141,26 @@ func TestPromptModel_AcceptsUnlistedID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "claude-future-9", got)
 }
+
+func TestPromptLanguage_NumberPicksLocale(t *testing.T) {
+	// "11" is ru in the shipped order (en, be, de, es, fr, he, it, kk, pl, pt, ru, uk).
+	sc := bufio.NewScanner(strings.NewReader("11\n"))
+	assert.Equal(t, "ru", promptLanguage(sc, ""))
+}
+
+func TestPromptLanguage_AcceptsLocaleCode(t *testing.T) {
+	sc := bufio.NewScanner(strings.NewReader("pl\n"))
+	assert.Equal(t, "pl", promptLanguage(sc, ""))
+}
+
+func TestPromptLanguage_MigratesLegacyName(t *testing.T) {
+	// Existing installs hold a free-text name; it must survive as a locale code.
+	sc := bufio.NewScanner(strings.NewReader("\n"))
+	assert.Equal(t, "ru", promptLanguage(sc, "Russian"))
+}
+
+func TestPromptLanguage_UnknownFallsBackToEnglish(t *testing.T) {
+	// Storing an unrenderable value would leave the bot with no catalog to use.
+	sc := bufio.NewScanner(strings.NewReader("klingon\n"))
+	assert.Equal(t, "en", promptLanguage(sc, ""))
+}

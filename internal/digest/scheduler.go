@@ -9,6 +9,7 @@ import (
 
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 )
@@ -31,6 +32,8 @@ type Config struct {
 	Sender       Sender
 	Logger       log.Logger
 	Now          func() time.Time // injectable clock; defaults to time.Now
+	// Printer renders the digest in the user's language; nil falls back to English.
+	Printer *i18n.Printer
 }
 
 // Scheduler sends one account's daily digest at a fixed local time.
@@ -101,7 +104,7 @@ func (s *Scheduler) runOnce(ctx context.Context) error {
 	}
 
 	digestID := idx.GenerateID()
-	msgID, err := s.cfg.Sender.SendDigest(ctx, FormatTelegram(d, s.cfg.AccountEmail), digestID)
+	msgID, err := s.cfg.Sender.SendDigest(ctx, FormatTelegram(s.cfg.Printer, d, s.cfg.AccountEmail), digestID)
 	if err != nil {
 		return fmt.Errorf("send digest: %w", err)
 	}
