@@ -33,21 +33,35 @@ func TestAuthenticate_OAuthPathConsultsTokenSource(t *testing.T) {
 	assert.Contains(t, err.Error(), "oauth token")
 }
 
+// stripHTML now returns raw text with block breaks intact; collapsing runs of
+// whitespace is normalizeText's job, so the two can be composed by extractText.
 func TestStripHTML(t *testing.T) {
 	tests := []struct {
 		name, in, want string
 	}{
 		{"plain text", "hello world", "hello world"},
-		{"tags removed", "<p>hello <b>world</b></p>", "hello world"},
-		{"whitespace collapsed", "a\n\n  b\t c", "a b c"},
-		{"script content kept as text", "<div>keep me</div>", "keep me"},
+		{"inline tags removed", "<b>hello</b> world", "hello world"},
+		{"block ends become newlines", "<p>a</p><p>b</p>", "a\nb\n"},
+		{"br becomes a newline", "a<br/>b", "a\nb"},
 		{"empty", "", ""},
+
+		// The bug this guards: a <style> block is markup, not letter. Emitting it
+		// showed the user a wall of CSS and fed the same to the model.
+		{"style content dropped", "<style>p{color:red}</style><p>keep me</p>", "keep me\n"},
+		{"script content dropped", "<script>var x=1;</script><p>keep me</p>", "keep me\n"},
+		{"head content dropped", "<head><title>t</title></head><body>keep me</body>", "keep me"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, stripHTML(tt.in))
 		})
 	}
+}
+
+func TestNormalizeText_CollapsesWhitespace(t *testing.T) {
+	assert.Equal(t, "a b c", normalizeText("a\t\tb   c"))
+	assert.Equal(t, "a\n\nb", normalizeText("a\n\n\n\n\nb"))
+	assert.Equal(t, "", normalizeText("   \n\n  "))
 }
 
 func TestTruncate(t *testing.T) {

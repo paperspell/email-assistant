@@ -39,11 +39,14 @@ var extraHeaderSection = &imaplib.FetchItemBodySection{
 	Peek:         true,
 }
 
-// peekBodySection fetches the plain-text body without setting the \Seen flag.
+// peekBodySection fetches the whole message without setting the \Seen flag.
+// The full message — not BODY[TEXT] — because the top-level headers carry the
+// Content-Type and multipart boundary that extractText needs to tell the letter
+// apart from the MIME plumbing around it.
 // Peek is ignored by the server when echoing the section spec back, so
 // FindBodySection matches it correctly regardless of the Peek field.
 var peekBodySection = &imaplib.FetchItemBodySection{
-	Specifier: imaplib.PartSpecifierText,
+	Specifier: imaplib.PartSpecifierNone,
 	Peek:      true,
 }
 
@@ -375,7 +378,7 @@ func (c *Client) fetchBodies(uidSet imaplib.UIDSet) (map[uint32]string, error) {
 	bodies := make(map[uint32]string, len(msgs))
 	for _, m := range msgs {
 		if bodyBytes := m.FindBodySection(peekBodySection); len(bodyBytes) > 0 {
-			body := truncate(stripHTML(string(bodyBytes)), maxBodyLen)
+			body := truncate(extractText(bodyBytes), maxBodyLen)
 			bodies[uint32(m.UID)] = body
 			c.cfg.Logger.Debug("imap body fetched", "uid", uint32(m.UID), "raw_bytes", len(bodyBytes), "stripped_len", len(body))
 		} else {
@@ -426,7 +429,7 @@ func (c *Client) FetchBody(_ context.Context, uid uint32) (string, error) {
 		}
 		for _, m := range msgs {
 			if bodyBytes := m.FindBodySection(peekBodySection); len(bodyBytes) > 0 {
-				body = truncate(stripHTML(string(bodyBytes)), maxBodyLen)
+				body = truncate(extractText(bodyBytes), maxBodyLen)
 				return nil
 			}
 		}
@@ -563,16 +566,65 @@ func parseHeaderBytes(data []byte) textproto.MIMEHeader {
 func stripHTML(s string) string {
 	z := html.NewTokenizer(strings.NewReader(s))
 	var b strings.Builder
+	// skipDepth counts the nesting of elements whose text content is markup, not
+	// letter: a <style> block renders as a wall of CSS, which is what made HTML
+	// mail look like it carried technical noise.
+	skipDepth := 0
 	for {
-		tt := z.Next()
-		if tt == html.ErrorToken {
-			break
-		}
-		if tt == html.TextToken {
-			b.Write(z.Text())
+		switch z.Next() {
+		case html.ErrorToken:
+			return b.String()
+
+		case html.StartTagToken:
+			name, _ := z.TagName()
+			if isNonContentTag(string(name)) {
+				skipDepth++
+			}
+
+		case html.EndTagToken:
+			name, _ := z.TagName()
+			if isNonContentTag(string(name)) {
+				if skipDepth > 0 {
+					skipDepth--
+				}
+				continue
+			}
+			// Block-level ends become line breaks so paragraphs survive.
+			if skipDepth == 0 && isBlockTag(string(name)) {
+				b.WriteByte('\n')
+			}
+
+		case html.SelfClosingTagToken:
+			name, _ := z.TagName()
+			if skipDepth == 0 && string(name) == "br" {
+				b.WriteByte('\n')
+			}
+
+		case html.TextToken:
+			if skipDepth == 0 {
+				b.Write(z.Text())
+			}
 		}
 	}
-	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// isNonContentTag reports whether an element's text is markup rather than the
+// letter itself.
+func isNonContentTag(name string) bool {
+	switch name {
+	case "style", "script", "head", "title", "noscript":
+		return true
+	}
+	return false
+}
+
+// isBlockTag reports whether closing the element should end a line.
+func isBlockTag(name string) bool {
+	switch name {
+	case "p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table", "blockquote":
+		return true
+	}
+	return false
 }
 
 // truncate cuts s to at most n bytes on a valid UTF-8 boundary.
