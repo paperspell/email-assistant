@@ -18,6 +18,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/browser"
 	"github.com/paperspell/email-assistant/internal/telegram"
 )
@@ -383,6 +384,28 @@ func configureNotifications(
 	})
 }
 
+// promptModel offers the provider's suggested models by number and accepts any
+// model id typed by hand, so a model released after this build still works.
+func promptModel(sc *bufio.Scanner, provider, current string) (string, error) {
+	choices := llm.SuggestedModels(provider)
+	if len(choices) == 0 {
+		return promptText(sc, "  Model (Enter for default)", current), nil
+	}
+
+	fmt.Println("  Model:")
+	for i, c := range choices {
+		fmt.Printf("    %d) %-18s %s\n", i+1, c.ID, c.Hint)
+	}
+	fmt.Println("    or type any model id")
+
+	def := current
+	if def == "" {
+		def = llm.DefaultModel(provider)
+	}
+	answer := promptText(sc, "  Choice", def)
+	return llm.ResolveModelChoice(provider, strings.TrimSpace(answer), current)
+}
+
 func configureLLM(
 	ctx context.Context, sc *bufio.Scanner, r *repo.SettingsRepo, current map[string]string,
 ) error {
@@ -420,7 +443,10 @@ func configureLLM(
 		return fmt.Errorf("unknown provider %q (valid: anthropic, openai)", provider)
 	}
 
-	model := promptText(sc, "  Model override (Enter for default)", current[config.KeyLLMModel])
+	model, err := promptModel(sc, provider, current[config.KeyLLMModel])
+	if err != nil {
+		return err
+	}
 	if model != "" {
 		settings[config.KeyLLMModel] = model
 	}

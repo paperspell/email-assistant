@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	defaultModel = "gpt-4o-mini"
+	defaultModel = "gpt-5.6-terra"
 	maxTokens    = 512
 )
 
@@ -60,7 +60,9 @@ func (c *Client) Classify(ctx context.Context, req llm.ClassifyRequest) (llm.Cla
 		ResponseFormat: &openaisdk.ChatCompletionResponseFormat{
 			Type: openaisdk.ChatCompletionResponseFormatTypeJSONObject,
 		},
-		MaxTokens: maxTokens,
+		// MaxCompletionTokens, not MaxTokens: the current GPT-5.x models reject
+		// the deprecated field outright, and it is accepted by the older ones.
+		MaxCompletionTokens: maxTokens,
 	})
 	if err != nil {
 		return llm.ClassifyResult{}, fmt.Errorf("openai classify: %w", err)

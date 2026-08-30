@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultModel = "claude-sonnet-4-6"
+	defaultModel = "claude-sonnet-5"
 	maxTokens    = int64(512)
 )
 
