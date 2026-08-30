@@ -32,11 +32,19 @@ const (
 	// "Local"/"UTC"). Default: system local time.
 	KeyDigestTimezone = "digest.timezone"
 
-	KeyLLMProvider            = "llm.provider"
-	KeyLLMAnthropicAPIKey     = "llm.anthropic.api_key"
-	KeyLLMOpenAIAPIKey        = "llm.openai.api_key"
-	KeyLLMGeminiAPIKey        = "llm.gemini.api_key"
+	KeyLLMProvider        = "llm.provider"
+	KeyLLMAnthropicAPIKey = "llm.anthropic.api_key"
+	KeyLLMOpenAIAPIKey    = "llm.openai.api_key"
+	KeyLLMGeminiAPIKey    = "llm.gemini.api_key"
+	// KeyLLMModel is the legacy, provider-agnostic model setting. It is still
+	// read as a fallback so an existing install keeps working, but the wizard
+	// writes the per-provider keys below: switching providers must not require
+	// remembering to change the model too, and a model id from one provider is
+	// meaningless to another.
 	KeyLLMModel               = "llm.model"
+	KeyLLMAnthropicModel      = "llm.anthropic.model"
+	KeyLLMOpenAIModel         = "llm.openai.model"
+	KeyLLMGeminiModel         = "llm.gemini.model"
 	KeyLLMScoreDivergenceWarn = "llm.score_divergence_warn"
 
 	KeyContentMode = "content.mode"

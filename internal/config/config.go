@@ -80,12 +80,40 @@ type TelegramConfig struct {
 
 // LLMConfig controls optional LLM-based classification.
 type LLMConfig struct {
-	Provider            string // "anthropic" | "openai" | "gemini" | "" (disabled)
-	AnthropicAPIKey     string
-	OpenAIAPIKey        string
-	GeminiAPIKey        string
-	Model               string // empty means use provider default
-	ScoreDivergenceWarn int    // log WARN when |llm_score - rule_score| >= this
+	Provider        string // "anthropic" | "openai" | "gemini" | "" (disabled)
+	AnthropicAPIKey string
+	OpenAIAPIKey    string
+	GeminiAPIKey    string
+	// Model is the model for the active Provider, already resolved from the
+	// per-provider setting (falling back to the legacy llm.model). Empty means
+	// use the provider default.
+	Model string
+	// AnthropicModel, OpenAIModel and GeminiModel keep each provider's own
+	// choice, so switching Provider is a single setting change.
+	AnthropicModel      string
+	OpenAIModel         string
+	GeminiModel         string
+	ScoreDivergenceWarn int // log WARN when |llm_score - rule_score| >= this
+}
+
+// modelFor returns the model configured for a provider, falling back to the
+// legacy provider-agnostic llm.model. The fallback is what carries an existing
+// install across the change: its single llm.model keeps driving whichever
+// provider it was already set for. Empty means the provider's own default.
+func (c LLMConfig) modelFor(provider string) string {
+	var m string
+	switch provider {
+	case "anthropic":
+		m = c.AnthropicModel
+	case "openai":
+		m = c.OpenAIModel
+	case "gemini":
+		m = c.GeminiModel
+	}
+	if m != "" {
+		return m
+	}
+	return c.Model
 }
 
 // ContentConfig controls what content is sent to the LLM.
@@ -160,6 +188,9 @@ var KnownKeys = map[string]bool{
 	KeyLLMOpenAIAPIKey:           true,
 	KeyLLMGeminiAPIKey:           true,
 	KeyLLMModel:                  true,
+	KeyLLMAnthropicModel:         true,
+	KeyLLMOpenAIModel:            true,
+	KeyLLMGeminiModel:            true,
 	KeyLLMScoreDivergenceWarn:    true,
 	KeyContentMode:               true,
 	KeyLogLevel:                  true,
@@ -275,6 +306,16 @@ func applySettings(cfg *Config, s map[string]string) {
 	if v := s[KeyLLMModel]; v != "" {
 		cfg.LLM.Model = v
 	}
+	if v := s[KeyLLMAnthropicModel]; v != "" {
+		cfg.LLM.AnthropicModel = v
+	}
+	if v := s[KeyLLMOpenAIModel]; v != "" {
+		cfg.LLM.OpenAIModel = v
+	}
+	if v := s[KeyLLMGeminiModel]; v != "" {
+		cfg.LLM.GeminiModel = v
+	}
+	cfg.LLM.Model = cfg.LLM.modelFor(cfg.LLM.Provider)
 	if v := s[KeyLLMScoreDivergenceWarn]; v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.LLM.ScoreDivergenceWarn = n

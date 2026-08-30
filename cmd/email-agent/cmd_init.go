@@ -379,6 +379,34 @@ func configureNotifications(
 	})
 }
 
+// providerModelKey maps a provider onto the setting holding its model.
+func providerModelKey(provider string) string {
+	switch provider {
+	case "openai":
+		return config.KeyLLMOpenAIModel
+	case "gemini":
+		return config.KeyLLMGeminiModel
+	default:
+		return config.KeyLLMAnthropicModel
+	}
+}
+
+// configuredProviders lists the providers that already hold an API key, so the
+// wizard can show what switching to them would need — nothing.
+func configuredProviders(current map[string]string) string {
+	var have []string
+	for _, p := range []struct{ name, key string }{
+		{"anthropic", config.KeyLLMAnthropicAPIKey},
+		{"openai", config.KeyLLMOpenAIAPIKey},
+		{"gemini", config.KeyLLMGeminiAPIKey},
+	} {
+		if current[p.key] != "" {
+			have = append(have, p.name)
+		}
+	}
+	return strings.Join(have, ", ")
+}
+
 // promptLanguage offers the shipped locales by number. One setting drives both
 // halves of the user's language: the text the bot writes itself, and the
 // language it asks the model to summarise in. A locale typed by hand is
@@ -436,6 +464,11 @@ func configureLLM(
 ) error {
 	fmt.Println("LLM Classification")
 	fmt.Println("  (press Enter at provider prompt to disable LLM)")
+	// Keys and models are kept per provider, so switching later is one setting.
+	// Showing which are already configured makes that switch obvious.
+	if configured := configuredProviders(current); configured != "" {
+		fmt.Println("  Already configured: " + configured)
+	}
 
 	provider := promptText(sc, "  Provider (anthropic/openai/gemini)", current[config.KeyLLMProvider])
 	provider = strings.ToLower(strings.TrimSpace(provider))
@@ -476,12 +509,19 @@ func configureLLM(
 		return fmt.Errorf("unknown provider %q (valid: anthropic, openai, gemini)", provider)
 	}
 
-	model, err := promptModel(sc, provider, current[config.KeyLLMModel])
+	modelKey := providerModelKey(provider)
+	// Fall back to the legacy shared setting so an install that has only
+	// llm.model sees its current model preselected rather than a blank prompt.
+	currentModel := current[modelKey]
+	if currentModel == "" {
+		currentModel = current[config.KeyLLMModel]
+	}
+	model, err := promptModel(sc, provider, currentModel)
 	if err != nil {
 		return err
 	}
 	if model != "" {
-		settings[config.KeyLLMModel] = model
+		settings[modelKey] = model
 	}
 
 	fmt.Println("  Body access:")
