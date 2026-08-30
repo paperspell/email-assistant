@@ -15,6 +15,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/features"
 	"github.com/paperspell/email-assistant/internal/filter"
+	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/idx"
@@ -46,6 +47,9 @@ type Config struct {
 	Notifier            telegram.Notifier
 	Alerter             Alerter // operational alerts (e.g. re-auth needed); nil disables them
 	Logger              log.Logger
+	// Printer renders operational alerts in the user's language; nil falls back
+	// to English.
+	Printer *i18n.Printer
 
 	// Mechanical filtering layer (Stage 9).
 	RuleRepo      *repo.RuleRepo
@@ -174,20 +178,23 @@ func (s *Scheduler) alertReauthIfNeeded(ctx context.Context, err error) {
 
 // reauthAlertText builds the HTML-formatted re-authorization instructions.
 func (s *Scheduler) reauthAlertText() string {
+	p := s.cfg.Printer
 	label := s.cfg.AccountEmail
 	if s.cfg.AccountName != "" && s.cfg.AccountName != s.cfg.AccountEmail {
 		label = fmt.Sprintf("%s (%s)", s.cfg.AccountName, s.cfg.AccountEmail)
 	}
-	email := html.EscapeString(s.cfg.AccountEmail)
-	return "⚠️ <b>Email authorization expired</b>\n\n" +
-		"Account: " + html.EscapeString(label) + "\n\n" +
-		"The Google sign-in for this mailbox has expired, so I can no longer check it. " +
-		"New emails from this account won't be delivered until you re-authorize.\n\n" +
-		"<b>To fix, on the machine running email-agent:</b>\n" +
-		"1. Run <code>email-agent account edit " + email + "</code>\n" +
-		"2. Answer <b>y</b> to \"Re-authorize with Google now?\" and complete the Google consent in the browser.\n" +
-		"3. Restart the daemon: <code>email-agent run</code>\n\n" +
-		"<i>Gmail in \"Testing\" mode expires this roughly every 7 days.</i>"
+	// Sent with HTML parse mode: catalog strings are authored here, only the
+	// account values are escaped. The commands stay untranslated — they are typed
+	// verbatim into a shell.
+	editCmd := "<code>email-agent account edit " + html.EscapeString(s.cfg.AccountEmail) + "</code>"
+	return "⚠️ <b>" + p.T("reauth_title") + "</b>\n\n" +
+		p.T("field_account") + ": " + html.EscapeString(label) + "\n\n" +
+		p.T("reauth_body") + "\n\n" +
+		"<b>" + p.T("reauth_steps_title") + "</b>\n" +
+		"1. " + p.T("reauth_step_edit", "Command", editCmd) + "\n" +
+		"2. " + p.T("reauth_step_consent") + "\n" +
+		"3. " + p.T("reauth_step_restart", "Command", "<code>email-agent run</code>") + "\n\n" +
+		"<i>" + p.T("reauth_note_testing") + "</i>"
 }
 
 func (s *Scheduler) poll(ctx context.Context) error {

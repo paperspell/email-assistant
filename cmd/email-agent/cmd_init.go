@@ -18,6 +18,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/config"
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
+	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/llm"
 	"github.com/paperspell/email-assistant/internal/pkg/browser"
 	"github.com/paperspell/email-assistant/internal/telegram"
@@ -371,17 +372,32 @@ func configureNotifications(
 		"  Min importance (critical/important/maybe)",
 		current[config.KeyNotificationMinImportance],
 	)
-	// Summaries are written in this language whatever language the email is in;
-	// the notification also shows the original language separately.
-	language := promptText(
-		sc,
-		"  Summary language (e.g. English, Russian)",
-		current[config.KeyNotificationLanguage],
-	)
+	language := promptLanguage(sc, current[config.KeyNotificationLanguage])
 	return saveSettings(ctx, r, map[string]string{
 		config.KeyNotificationMinImportance: minImportance,
-		config.KeyNotificationLanguage:      strings.TrimSpace(language),
+		config.KeyNotificationLanguage:      language,
 	})
+}
+
+// promptLanguage offers the shipped locales by number. One setting drives both
+// halves of the user's language: the text the bot writes itself, and the
+// language it asks the model to summarise in. A locale typed by hand is
+// accepted too, so an install can keep a legacy value like "Russian".
+func promptLanguage(sc *bufio.Scanner, current string) string {
+	fmt.Println("  Notification language (also the language of LLM summaries):")
+	for i, loc := range i18n.Supported {
+		fmt.Printf("    %d) %-3s %s\n", i+1, loc, i18n.LanguageName(loc))
+	}
+
+	def := i18n.ResolveLocale(current)
+	answer := strings.TrimSpace(promptText(sc, "  Choice", def))
+	if n, err := strconv.Atoi(answer); err == nil && n >= 1 && n <= len(i18n.Supported) {
+		return i18n.Supported[n-1]
+	}
+	// Not a number: treat it as a locale or a language name. Anything
+	// unrecognised resolves to English rather than being stored as-is, so the
+	// stored value is always one the bot can render.
+	return i18n.ResolveLocale(answer)
 }
 
 // promptModel offers the provider's suggested models by number and accepts any
