@@ -159,11 +159,8 @@ other = "🗂 Дзённая зводка — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "Сёння нічога не адфільтравана."
 
-[digest_filtered]
-one = "яшчэ {{.Count}} ліст адфільтраваны правіламі"
-few = "яшчэ {{.Count}} лісты адфільтраваны правіламі"
-many = "яшчэ {{.Count}} лістоў адфільтравана правіламі"
-other = "яшчэ {{.Count}} ліста адфільтравана правіламі"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · важнасць {{.Score}}"
 
 [digest_keep_hint]
 other = "Адкажыце /important <н,…>, каб пакінуць ліст."

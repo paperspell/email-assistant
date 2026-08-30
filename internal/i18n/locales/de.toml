@@ -159,9 +159,8 @@ other = "🗂 Tagesübersicht — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "Heute wurde nichts gefiltert."
 
-[digest_filtered]
-one = "{{.Count}} weitere E-Mail durch Regeln gefiltert"
-other = "{{.Count}} weitere E-Mails durch Regeln gefiltert"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · Wichtigkeit {{.Score}}"
 
 [digest_keep_hint]
 other = "Antworte /important <n,…>, um eine E-Mail zu behalten."

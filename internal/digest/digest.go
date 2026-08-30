@@ -21,8 +21,11 @@ type Item struct {
 	Score int
 }
 
-// Counter summarises mail that was filtered without an LLM summary, grouped by
-// provenance, so the digest can collapse it into one line (and the CLI expand it).
+// Counter breaks the listed mail down by what decided to hide it. Every email it
+// counts is also listed as an Item — it is a provenance breakdown of the same
+// set, not a second bucket — so only `digest show` renders it. The Telegram
+// digest used to print it as "+N filtered", which read as mail withheld from the
+// list.
 type Counter struct {
 	ByRule   map[string]int // decided_by "rule:<id>" -> count
 	Baseline int            // baseline score gate
@@ -36,11 +39,15 @@ type Digest struct {
 	Date      string
 	Items     []Item
 	Counter   Counter
+	// Loc is the timezone the digest is rendered in, so receipt times read as
+	// local clock times rather than UTC.
+	Loc *time.Location
 }
 
-// Empty reports whether there is nothing to send.
+// Empty reports whether there is nothing to send. Every email in the digest is
+// listed, so the item count alone decides.
 func (d Digest) Empty() bool {
-	return len(d.Items) == 0 && d.Counter.Total == 0
+	return len(d.Items) == 0
 }
 
 // Build gathers the account's ignored mail for the given date (in loc) and splits
@@ -71,12 +78,13 @@ func Build(
 		return Digest{}, err
 	}
 
-	d := Digest{AccountID: accountID, Date: date, Counter: Counter{ByRule: map[string]int{}}}
+	d := Digest{AccountID: accountID, Date: date, Loc: loc, Counter: Counter{ByRule: map[string]int{}}}
 	seq := 0
 	for _, e := range emails {
-		// Every ignored email is listed, whoever made the call: a digest that hides
-		// rule- and baseline-filtered mail cannot be audited by the person whose
-		// rules produced it. The counter below still breaks the decisions down.
+		// Every email that was not notified separately is listed, whoever made the
+		// call: a digest that hides rule- and baseline-filtered mail cannot be
+		// audited by the person whose rules produced it. The counter below breaks
+		// the same set down by provenance for `digest show`.
 		seq++
 		summary, score := verdict(byEmail[e.ID])
 		d.Items = append(d.Items, Item{SeqNo: seq, Email: e, Summary: summary, Score: score})

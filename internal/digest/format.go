@@ -4,13 +4,20 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/paperspell/email-assistant/internal/domain"
 	"github.com/paperspell/email-assistant/internal/i18n"
 )
 
 // FormatTelegram renders the digest as the plain-text body of a Telegram message
 // in the user's language. The Mark read / Remove buttons are attached separately
 // by the bot.
+//
+// Every email here is one that was not notified separately, so the list is the
+// whole of what the digest covers. It deliberately prints no "+N filtered"
+// footer: the counter breaks down the same emails by provenance, and printing it
+// as a total read as mail being withheld from the list.
 func FormatTelegram(p *i18n.Printer, d Digest, accountEmail string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", p.T("digest_title", "Account", accountEmail, "Date", d.Date))
@@ -18,19 +25,43 @@ func FormatTelegram(p *i18n.Printer, d Digest, accountEmail string) string {
 	if len(d.Items) == 0 {
 		b.WriteString(p.T("digest_empty") + "\n\n")
 	}
-	// One line per email — number, score, subject — separated by blank lines, so
-	// the list stays scannable on a phone and `/important <n>` keeps working.
+	// Two lines per email: the subject, then who sent it, when it arrived and the
+	// score behind the decision. Separated by blank lines so the list stays
+	// scannable on a phone, and numbered so `/important <n>` keeps working.
 	for _, it := range d.Items {
-		fmt.Fprintf(&b, "%d. [%d] %s\n\n", it.SeqNo, it.Score, it.Email.Subject)
+		fmt.Fprintf(&b, "%d. %s\n   %s\n\n",
+			it.SeqNo,
+			it.Email.Subject,
+			p.T("digest_item_meta",
+				"Sender", senderLabel(it.Email),
+				"Time", receivedAt(it.Email, d.Loc),
+				"Score", it.Score,
+			),
+		)
 	}
 
-	if d.Counter.Total > 0 {
-		fmt.Fprintf(&b, "\n%s", p.N("digest_filtered", d.Counter.Total))
-	}
 	if len(d.Items) > 0 {
-		b.WriteString("\n" + p.T("digest_keep_hint"))
+		b.WriteString(p.T("digest_keep_hint"))
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// senderLabel renders the sender as "Name <email>", or the address alone when no
+// display name was set or it merely repeats the address.
+func senderLabel(e domain.Email) string {
+	if e.FromName == "" || e.FromName == e.FromEmail {
+		return e.FromEmail
+	}
+	return e.FromName + " <" + e.FromEmail + ">"
+}
+
+// receivedAt renders when the email arrived, as a local clock time. Digest items
+// are all from one day, so the date would repeat on every line.
+func receivedAt(e domain.Email, loc *time.Location) string {
+	if loc == nil {
+		loc = time.Local
+	}
+	return e.ReceivedAt.In(loc).Format("15:04")
 }
 
 // FormatCounter renders the expanded provenance breakdown for `digest show`.

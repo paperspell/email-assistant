@@ -117,23 +117,50 @@ func TestNextFire_HonoursTimezone(t *testing.T) {
 	assert.Equal(t, ny, fire.Location())
 }
 
-func TestFormatTelegram_IncludesItemsAndCounter(t *testing.T) {
+func TestFormatTelegram_ListsSenderTimeAndScore(t *testing.T) {
+	warsaw, err := time.LoadLocation("Europe/Warsaw")
+	require.NoError(t, err)
+
 	d := Digest{
-		AccountID: testAcct, Date: testDate,
+		AccountID: testAcct, Date: testDate, Loc: warsaw,
 		Items: []Item{
-			{SeqNo: 1, Email: domain.Email{FromName: "LinkedIn", Subject: "5 jobs"}, Summary: "Job alert.", Score: 22},
-			{SeqNo: 2, Email: domain.Email{FromName: "Shop", Subject: "Sale"}, Score: 5},
+			{SeqNo: 1, Email: domain.Email{
+				FromName: "LinkedIn", FromEmail: "jobs@linkedin.com", Subject: "5 jobs",
+				ReceivedAt: time.Date(2026, 8, 30, 7, 14, 0, 0, time.UTC),
+			}, Summary: "Job alert.", Score: 22},
+			{SeqNo: 2, Email: domain.Email{
+				FromEmail: "sale@shop.com", Subject: "Sale",
+				ReceivedAt: time.Date(2026, 8, 30, 18, 2, 0, 0, time.UTC),
+			}, Score: 5},
 		},
-		Counter: Counter{Total: 3},
+		// Same emails, broken down by provenance. It must not reach the message.
+		Counter: Counter{Total: 2},
 	}
+
 	out := FormatTelegram(i18n.English(), d, testAcct)
 
-	// Одна строка на письмо: номер, счёт, тема — и пустая строка между письмами.
-	assert.Contains(t, out, "1. [22] 5 jobs\n\n")
-	assert.Contains(t, out, "2. [5] Sale")
-	// Ни отправителя, ни резюме в списке больше нет.
-	assert.NotContains(t, out, "LinkedIn")
-	assert.NotContains(t, out, "Job alert.")
-	assert.Contains(t, out, "+3 filtered")
+	// Subject on its own line, then sender, receipt time and the labelled score.
+	assert.Contains(t, out, "1. 5 jobs\n   LinkedIn <jobs@linkedin.com> · 09:14 · importance 22\n\n")
+	// No display name: the address stands alone rather than rendering "<>" empty.
+	assert.Contains(t, out, "2. Sale\n   sale@shop.com · 20:02 · importance 5")
+	// The score is labelled, so a bare number cannot be mistaken for a count.
+	assert.NotContains(t, out, "[22]")
 	assert.Contains(t, out, "/important")
+}
+
+// The counter breaks down the very emails already listed, so printing it as
+// "+N filtered" told the reader mail had been withheld from the list.
+func TestFormatTelegram_OmitsTheProvenanceCounter(t *testing.T) {
+	d := Digest{
+		AccountID: testAcct, Date: testDate, Loc: time.UTC,
+		Items: []Item{{SeqNo: 1, Email: domain.Email{
+			FromEmail: "a@b.com", Subject: "s", ReceivedAt: time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC),
+		}, Score: 3}},
+		Counter: Counter{Total: 1, ByRule: map[string]int{"rule:x": 1}},
+	}
+
+	out := FormatTelegram(i18n.English(), d, testAcct)
+
+	assert.NotContains(t, out, "filtered")
+	assert.NotContains(t, out, "+1")
 }

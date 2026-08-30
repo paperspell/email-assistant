@@ -159,11 +159,8 @@ other = "🗂 Podsumowanie dnia — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "Dziś nic nie zostało odfiltrowane."
 
-[digest_filtered]
-one = "jeszcze {{.Count}} wiadomość odfiltrowana przez reguły"
-few = "jeszcze {{.Count}} wiadomości odfiltrowane przez reguły"
-many = "jeszcze {{.Count}} wiadomości odfiltrowanych przez reguły"
-other = "jeszcze {{.Count}} wiadomości odfiltrowanych przez reguły"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · ważność {{.Score}}"
 
 [digest_keep_hint]
 other = "Odpowiedz /important <n,…>, aby zachować wiadomość."

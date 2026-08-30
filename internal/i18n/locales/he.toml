@@ -159,11 +159,8 @@ other = "🗂 סיכום יומי — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "היום לא סוננו מיילים."
 
-[digest_filtered]
-one = "עוד מייל אחד ({{.Count}}) סונן על ידי כללים"
-two = "עוד {{.Count}} מיילים סוננו על ידי כללים"
-many = "עוד {{.Count}} מיילים סוננו על ידי כללים"
-other = "עוד {{.Count}} מיילים סוננו על ידי כללים"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · חשיבות {{.Score}}"
 
 [digest_keep_hint]
 other = "השיבו /important <n,…> כדי לשמור מייל."

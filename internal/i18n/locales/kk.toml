@@ -159,9 +159,8 @@ other = "🗂 Күнделікті жинақ — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "Бүгін ешқандай хат сүзілген жоқ."
 
-[digest_filtered]
-one = "тағы {{.Count}} хат ережелермен сүзілді"
-other = "тағы {{.Count}} хат ережелермен сүзілді"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · маңыздылық {{.Score}}"
 
 [digest_keep_hint]
 other = "Хатты қалдыру үшін /important <н,…> деп жауап беріңіз."

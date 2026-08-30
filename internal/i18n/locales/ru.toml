@@ -158,11 +158,8 @@ other = "🗂 Дневная сводка — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "Сегодня ничего не отфильтровано."
 
-[digest_filtered]
-one = "ещё {{.Count}} письмо отфильтровано правилами"
-few = "ещё {{.Count}} письма отфильтровано правилами"
-many = "ещё {{.Count}} писем отфильтровано правилами"
-other = "ещё {{.Count}} письма отфильтровано правилами"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · важность {{.Score}}"
 
 [digest_keep_hint]
 other = "Ответьте /important <н,…>, чтобы оставить письмо."
