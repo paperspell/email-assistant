@@ -164,9 +164,8 @@ other = "🗂 Daily digest — {{.Account}} — {{.Date}}"
 [digest_empty]
 other = "No mail was filtered today."
 
-[digest_filtered]
-one = "+{{.Count}} filtered by rules/baseline"
-other = "+{{.Count}} filtered by rules/baseline"
+[digest_item_meta]
+other = "{{.Sender}} · {{.Time}} · importance {{.Score}}"
 
 [digest_keep_hint]
 other = "Reply /important <n,…> to keep an item."

@@ -57,13 +57,13 @@ func TestPrinter_PluralForms(t *testing.T) {
 	require.NoError(t, err)
 
 	// Русский требует трёх форм — ради этого и взята библиотека с правилами CLDR.
-	assert.Contains(t, ru.N("digest_filtered", 1), "1 письмо")
-	assert.Contains(t, ru.N("digest_filtered", 3), "3 письма")
-	assert.Contains(t, ru.N("digest_filtered", 7), "7 писем")
+	assert.Contains(t, ru.N("digest_promoted", 1), "1 письмо ")
+	assert.Contains(t, ru.N("digest_promoted", 3), "3 письма ")
+	assert.Contains(t, ru.N("digest_promoted", 7), "7 писем ")
 
 	en, err := NewPrinter("en")
 	require.NoError(t, err)
-	assert.Contains(t, en.N("digest_filtered", 3), "+3 filtered")
+	assert.Contains(t, en.N("digest_promoted", 3), "Promoted 3 items")
 }
 
 func TestCatalogs_AreComplete(t *testing.T) {
@@ -116,8 +116,7 @@ func TestPrinter_TemplateDoesNotEscapeHTML(t *testing.T) {
 // locale, every plural message and the counts that select each CLDR category.
 func TestCatalogs_HaveEveryPluralFormTheyNeed(t *testing.T) {
 	pluralIDs := []string{
-		"digest_filtered", "digest_promoted",
-		"digest_marked_read", "digest_moved_trash",
+		"digest_promoted", "digest_marked_read", "digest_moved_trash",
 	}
 	counts := []int{0, 1, 2, 3, 5, 7, 11, 21, 22, 25, 100, 101}
 
