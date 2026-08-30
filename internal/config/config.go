@@ -208,10 +208,12 @@ func defaults() *Config {
 			DefaultInterval: DefaultPollInterval,
 		},
 		Filter: FilterConfig{
-			// No gate by default: every message reaches the LLM. A keyword scorer
-			// cannot be tuned for every language its users receive mail in, and when
-			// it vetoes the classifier it does so silently — the owner never learns
-			// the message existed. Raising this trades recall for a smaller bill.
+			// No baseline gate by default. A keyword scorer cannot be tuned for
+			// every language its users receive mail in, and when it vetoes the
+			// classifier it does so silently — the owner never learns the message
+			// existed. Raising this trades recall for a smaller bill. (Whether the
+			// LLM then runs is a separate question: it is skipped when no provider
+			// is configured, and per-account rules decide before it is consulted.)
 			BaselineFloor: domain.LevelIgnore,
 		},
 		Digest: DigestConfig{
