@@ -1,298 +1,290 @@
-# kk: not translated yet — English placeholder so the catalog stays complete.
-# Translated in the follow-up localization PR.
-
-# English is the source catalog: every other locale is translated from it, and
-# the completeness test compares id sets against this file.
-#
-# Placeholders are Go templates ({{.Name}}) and must survive translation
-# unchanged. Plural forms follow CLDR: English needs one/other, Russian and the
-# other Slavic locales need one/few/many/other.
+# Kazakh. Translated from en.toml; placeholders ({{.Name}}) must stay unchanged.
+# Plural forms follow CLDR for this language.
 
 # --- Notification -----------------------------------------------------------
 
 [notification_header]
-other = "📧 New email"
+other = "📧 Жаңа хат"
 
 [notification_importance]
-other = "Importance: {{.Level}} (score {{.Score}})"
+other = "Маңыздылығы: {{.Level}} (баға {{.Score}})"
 
 [field_subject]
-other = "Subject"
+other = "Тақырып"
 
 [field_account]
-other = "Account"
+other = "Тіркелгі"
 
 [field_from]
-other = "From"
+other = "Кімнен"
 
 [field_date]
-other = "Date"
+other = "Күні"
 
 [field_original_language]
-other = "Original language"
+other = "Түпнұсқа тілі"
 
 [field_summary]
-other = "Summary"
+other = "Қысқаша"
 
 [field_why]
-other = "Why"
+other = "Себебі"
 
 [field_category]
-other = "Category"
+other = "Санат"
 
 [field_reasons]
-other = "Reasons"
+other = "Себептері"
 
 # --- Importance levels ------------------------------------------------------
 
 [level_critical]
-other = "critical"
+other = "аса маңызды"
 
 [level_important]
-other = "important"
+other = "маңызды"
 
 [level_maybe]
-other = "maybe"
+other = "маңызды болуы мүмкін"
 
 [level_ignore]
-other = "ignore"
+other = "маңызды емес"
 
 # --- Detected language of the incoming email --------------------------------
 # Only the languages the detector can emit; anything else falls back to the
 # uppercased code.
-
 [lang_be]
-other = "Belarusian"
+other = "беларусша"
 
 [lang_de]
-other = "German"
+other = "немісше"
 
 [lang_en]
-other = "English"
+other = "ағылшынша"
 
 [lang_es]
-other = "Spanish"
+other = "испанша"
 
 [lang_fr]
-other = "French"
+other = "французша"
 
 [lang_he]
-other = "Hebrew"
+other = "иврит"
 
 [lang_it]
-other = "Italian"
+other = "итальянша"
 
 [lang_kk]
-other = "Kazakh"
+other = "қазақша"
 
 [lang_pl]
-other = "Polish"
+other = "полякша"
 
 [lang_pt]
-other = "Portuguese"
+other = "португалша"
 
 [lang_ro]
-other = "Romanian"
+other = "румынша"
 
 [lang_ru]
-other = "Russian"
+other = "орысша"
 
 [lang_uk]
-other = "Ukrainian"
+other = "украинша"
 
 # --- Buttons ----------------------------------------------------------------
 
 [btn_handled]
-other = "✓ Handled"
+other = "✓ Өңделді"
 
 [btn_ignore]
-other = "✗ Ignore"
+other = "✗ Елемеу"
 
 [btn_details]
-other = "ℹ Details"
+other = "ℹ Толығырақ"
 
 [btn_ign_sender]
-other = "This sender"
+other = "Осы жіберушіні"
 
 [btn_ign_domain]
-other = "This domain"
+other = "Осы доменді"
 
 [btn_ign_listid]
-other = "This mailing list"
+other = "Осы таратылымды"
 
 [btn_ign_subject]
-other = "Subject like this"
+other = "Осындай тақырыпты"
 
 [btn_ign_reason]
-other = "Describe a reason"
+other = "Себебін көрсету"
 
 [btn_ign_once]
-other = "Just this once"
+other = "Тек осы хатты"
 
 [btn_cancel]
-other = "Cancel"
+other = "Бас тарту"
 
 [btn_subj_use]
-other = "Use it"
+other = "Жарайды"
 
 [btn_subj_edit]
-other = "Edit"
+other = "Өзгерту"
 
 [btn_prom_rmrule]
-other = "Remove rule"
+other = "Ережені жою"
 
 [btn_prom_allow]
-other = "Add exception"
+other = "Ерекшелік қосу"
 
 [btn_prom_keep]
-other = "Keep rule"
+other = "Ережені қалдыру"
 
 [btn_prom_yes]
-other = "Yes, always important"
+other = "Иә, әрқашан маңызды"
 
 [btn_prom_no]
-other = "No, just this time"
+other = "Жоқ, тек осы жолы"
 
 [btn_digest_read]
-other = "✓ Mark read"
+other = "✓ Оқылды"
 
 [btn_digest_remove]
-other = "🗑 Remove"
+other = "🗑 Себетке"
 
 # --- Digest -----------------------------------------------------------------
 
 [digest_title]
-other = "🗂 Daily digest — {{.Account}} — {{.Date}}"
+other = "🗂 Күнделікті жинақ — {{.Account}} — {{.Date}}"
 
 [digest_empty]
-other = "No mail was filtered today."
+other = "Бүгін ешқандай хат сүзілген жоқ."
 
 [digest_filtered]
-one = "+{{.Count}} filtered by rules/baseline"
-other = "+{{.Count}} filtered by rules/baseline"
+one = "тағы {{.Count}} хат ережелермен сүзілді"
+other = "тағы {{.Count}} хат ережелермен сүзілді"
 
 [digest_keep_hint]
-other = "Reply /important <n,…> to keep an item."
+other = "Хатты қалдыру үшін /important <н,…> деп жауап беріңіз."
 
 [digest_reply_hint]
-other = "Reply to a digest message with /important <n,…>."
+other = "Жинақ хабарламасына /important <н,…> деп жауап беріңіз."
 
 [digest_important_usage]
-other = "Usage: /important 3,7"
+other = "Қолданылуы: /important 3,7"
 
 [digest_promoted]
-one = "Promoted {{.Count}} item to important."
-other = "Promoted {{.Count}} items to important."
+one = "{{.Count}} хат маңызды деп белгіленді."
+other = "{{.Count}} хат маңызды деп белгіленді."
 
 [digest_marked_read]
-one = "✓ {{.Count}} email marked read."
-other = "✓ {{.Count}} emails marked read."
+one = "✓ {{.Count}} хат оқылды деп белгіленді."
+other = "✓ {{.Count}} хат оқылды деп белгіленді."
 
 [digest_moved_trash]
-one = "✓ {{.Count}} email moved to Trash."
-other = "✓ {{.Count}} emails moved to Trash."
+one = "✓ {{.Count}} хат себетке жылжытылды."
+other = "✓ {{.Count}} хат себетке жылжытылды."
 
 [promote_hidden_by_rule]
-other = "Promoted. It was hidden by rule ({{.Rule}})."
+other = "Маңызды деп белгіленді. Хат ережемен жасырылған еді ({{.Rule}})."
 
 [promote_always_important]
-other = "Promoted. Always treat mail from {{.Sender}} as important?"
+other = "Маңызды деп белгіленді. {{.Sender}} жіберген хаттар әрқашан маңызды деп саналсын ба?"
 
 # --- Details ----------------------------------------------------------------
 
 [details_title]
-other = "ℹ Email details"
+other = "ℹ Хат туралы толық"
 
 [details_body_unavailable]
-other = "(body unavailable)"
+other = "(хат мәтіні қолжетімсіз)"
 
 [details_llm_classification]
-other = "LLM classification: {{.Level}} (score {{.Score}})"
+other = "Модель бағасы: {{.Level}} (баға {{.Score}})"
 
 [details_rule_classification]
-other = "Rule-based classification: {{.Level}} (score {{.Score}})"
+other = "Ережелер бойынша баға: {{.Level}} (баға {{.Score}})"
 
 [details_classification]
-other = "Classification: {{.Level}} (score {{.Score}})"
+other = "Баға: {{.Level}} (баға {{.Score}})"
 
 # --- Ignore / rule flows ----------------------------------------------------
 
 [flow_ignored_no_rule]
-other = "Ignored (no rule)."
+other = "Хат еленбеді, ереже құрылған жоқ."
 
 [flow_no_list_id]
-other = "This email has no List-Id."
+other = "Бұл хатта List-Id тақырыбы жоқ."
 
 [flow_reason_unavailable]
-other = "Reason rules are unavailable."
+other = "Себеп бойынша ережелер қазір қолжетімсіз."
 
 [flow_subject_unavailable]
-other = "Subject rules are unavailable."
+other = "Тақырып бойынша ережелер қазір қолжетімсіз."
 
 [flow_send_reason]
-other = "Send the reason to ignore similar mail (one message)."
+other = "Ұқсас хаттарды неге елемеу керегін бір хабарламамен жіберіңіз."
 
 [flow_send_subject_pattern]
-other = "Send the subject pattern to match (one message)."
+other = "Тақырып үлгісін бір хабарламамен жіберіңіз."
 
 [flow_suggested_pattern]
-other = "Suggested pattern: {{.Pattern}} (matches this sender's subjects)."
+other = "Ұсынылған үлгі: {{.Pattern}} (осы жіберушінің тақырыптарына сәйкес келеді)."
 
 [flow_nothing_to_confirm]
-other = "Nothing to confirm."
+other = "Растайтын ештеңе жоқ."
 
 [flow_subject_cancelled]
-other = "Cancelled. The email stays ignored (no subject rule)."
+other = "Бас тартылды. Хат еленбеген күйінде қалады, тақырып ережесі құрылған жоқ."
 
 [flow_clause_added]
-other = "Ignore clause added (applies to future mail via the LLM)."
+other = "Ереже қосылды — модель оны жаңа хаттарда ескереді."
 
 [flow_rule_added_sender]
-other = "Rule added: ignore sender {{.Value}}."
+other = "Ереже қосылды: {{.Value}} жіберушісін елемеу."
 
 [flow_rule_added_domain]
-other = "Rule added: ignore domain {{.Value}}."
+other = "Ереже қосылды: {{.Value}} доменін елемеу."
 
 [flow_rule_added_list]
-other = "Rule added: ignore list {{.Value}}."
+other = "Ереже қосылды: {{.Value}} таратылымын елемеу."
 
 [flow_rule_added_subject]
-other = "Rule added: ignore subject ~ {{.Pattern}}."
+other = "Ереже қосылды: ~ {{.Pattern}} тақырыбын елемеу."
 
 [flow_rule_added_subject_from]
-other = "Rule added: ignore subject ~ {{.Pattern}} from {{.Sender}}."
+other = "Ереже қосылды: {{.Sender}} жіберген ~ {{.Pattern}} тақырыбын елемеу."
 
 [flow_rule_removed]
-other = "Rule removed."
+other = "Ереже жойылды."
 
 [flow_email_unavailable]
-other = "Email no longer available."
+other = "Хат енді қолжетімсіз."
 
 [flow_allow_sender_added]
-other = "Added: always treat mail from {{.Sender}} as important."
+other = "Қосылды: {{.Sender}} жіберген хаттар әрқашан маңызды деп саналады."
 
 [flow_ok]
-other = "OK."
+other = "Дайын."
 
 # --- Re-authorization alert -------------------------------------------------
 
 [reauth_title]
-other = "⚠️ Email authorization expired"
+other = "⚠️ Поштаға рұқсат мерзімі бітті"
 
 [reauth_body]
-other = "The Google sign-in for this mailbox has expired, so I can no longer check it. New emails from this account won't be delivered until you re-authorize."
+other = "Бұл жәшікке Google арқылы берілген рұқсат мерзімі бітті, енді оны тексере алмаймын. Рұқсатты қайта растамайынша, осы тіркелгіден жаңа хаттар келмейді."
 
 [reauth_steps_title]
-other = "To fix, on the machine running email-agent:"
+other = "email-agent жұмыс істеп тұрған машинада:"
 
 [reauth_step_edit]
-other = "Run {{.Command}}"
+other = "{{.Command}} командасын орындаңыз"
 
 [reauth_step_consent]
-other = "Answer y to \"Re-authorize with Google now?\" and complete the Google consent in the browser."
+other = "«Re-authorize with Google now?» сұрағына y деп жауап беріп, браузерде рұқсатты растаңыз."
 
 [reauth_step_restart]
-other = "Restart the daemon: {{.Command}}"
+other = "Демонды қайта іске қосыңыз: {{.Command}}"
 
 [reauth_note_testing]
-other = "Gmail in \"Testing\" mode expires this roughly every 7 days."
+other = "«Testing» режимінде Gmail рұқсаты шамамен 7 күн сайын бітеді."
