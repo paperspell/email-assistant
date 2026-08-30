@@ -35,6 +35,7 @@ const (
 	KeyLLMProvider            = "llm.provider"
 	KeyLLMAnthropicAPIKey     = "llm.anthropic.api_key"
 	KeyLLMOpenAIAPIKey        = "llm.openai.api_key"
+	KeyLLMGeminiAPIKey        = "llm.gemini.api_key"
 	KeyLLMModel               = "llm.model"
 	KeyLLMScoreDivergenceWarn = "llm.score_divergence_warn"
 

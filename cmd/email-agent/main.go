@@ -29,6 +29,7 @@ import (
 
 	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
 	llmanthropic "github.com/paperspell/email-assistant/internal/llm/anthropic"
+	llmgemini "github.com/paperspell/email-assistant/internal/llm/gemini"
 	llmopenai "github.com/paperspell/email-assistant/internal/llm/openai"
 )
 
@@ -153,6 +154,9 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	case "openai":
 		llmProvider = llmopenai.New(cfg.LLM.OpenAIAPIKey, cfg.LLM.Model)
 		logger.Info("LLM provider: openai", "model", cfg.LLM.Model)
+	case "gemini":
+		llmProvider = llmgemini.New(cfg.LLM.GeminiAPIKey, cfg.LLM.Model)
+		logger.Info("LLM provider: gemini", "model", cfg.LLM.Model)
 	}
 
 	fetchBody := cfg.Content.Mode == "full_body" || cfg.Content.Mode == "redacted_body"
