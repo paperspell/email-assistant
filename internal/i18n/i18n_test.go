@@ -94,3 +94,14 @@ func messageIDs(t *testing.T, locale string) map[string]struct{} {
 	}
 	return ids
 }
+
+// The re-auth alert is sent with HTML parse mode and passes <code> markup
+// through a template placeholder. If the catalog templates were HTML-escaping,
+// the tags would reach Telegram as literal text.
+func TestPrinter_TemplateDoesNotEscapeHTML(t *testing.T) {
+	p, err := NewPrinter("en")
+	assert.NoError(t, err)
+	out := p.T("reauth_step_edit", "Command", "<code>email-agent account edit a@b.com</code>")
+	assert.Contains(t, out, "<code>email-agent account edit a@b.com</code>")
+	assert.NotContains(t, out, "&lt;code&gt;")
+}
