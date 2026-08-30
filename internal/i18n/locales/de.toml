@@ -1,298 +1,290 @@
-# de: not translated yet — English placeholder so the catalog stays complete.
-# Translated in the follow-up localization PR.
-
-# English is the source catalog: every other locale is translated from it, and
-# the completeness test compares id sets against this file.
-#
-# Placeholders are Go templates ({{.Name}}) and must survive translation
-# unchanged. Plural forms follow CLDR: English needs one/other, Russian and the
-# other Slavic locales need one/few/many/other.
+# German. Translated from en.toml; placeholders ({{.Name}}) must stay unchanged.
+# Plural forms follow CLDR for this language.
 
 # --- Notification -----------------------------------------------------------
 
 [notification_header]
-other = "📧 New email"
+other = "📧 Neue E-Mail"
 
 [notification_importance]
-other = "Importance: {{.Level}} (score {{.Score}})"
+other = "Wichtigkeit: {{.Level}} (Bewertung {{.Score}})"
 
 [field_subject]
-other = "Subject"
+other = "Betreff"
 
 [field_account]
-other = "Account"
+other = "Konto"
 
 [field_from]
-other = "From"
+other = "Von"
 
 [field_date]
-other = "Date"
+other = "Datum"
 
 [field_original_language]
-other = "Original language"
+other = "Originalsprache"
 
 [field_summary]
-other = "Summary"
+other = "Zusammenfassung"
 
 [field_why]
-other = "Why"
+other = "Begründung"
 
 [field_category]
-other = "Category"
+other = "Kategorie"
 
 [field_reasons]
-other = "Reasons"
+other = "Gründe"
 
 # --- Importance levels ------------------------------------------------------
 
 [level_critical]
-other = "critical"
+other = "kritisch"
 
 [level_important]
-other = "important"
+other = "wichtig"
 
 [level_maybe]
-other = "maybe"
+other = "eventuell wichtig"
 
 [level_ignore]
-other = "ignore"
+other = "unwichtig"
 
 # --- Detected language of the incoming email --------------------------------
 # Only the languages the detector can emit; anything else falls back to the
 # uppercased code.
-
 [lang_be]
-other = "Belarusian"
+other = "Belarussisch"
 
 [lang_de]
-other = "German"
+other = "Deutsch"
 
 [lang_en]
-other = "English"
+other = "Englisch"
 
 [lang_es]
-other = "Spanish"
+other = "Spanisch"
 
 [lang_fr]
-other = "French"
+other = "Französisch"
 
 [lang_he]
-other = "Hebrew"
+other = "Hebräisch"
 
 [lang_it]
-other = "Italian"
+other = "Italienisch"
 
 [lang_kk]
-other = "Kazakh"
+other = "Kasachisch"
 
 [lang_pl]
-other = "Polish"
+other = "Polnisch"
 
 [lang_pt]
-other = "Portuguese"
+other = "Portugiesisch"
 
 [lang_ro]
-other = "Romanian"
+other = "Rumänisch"
 
 [lang_ru]
-other = "Russian"
+other = "Russisch"
 
 [lang_uk]
-other = "Ukrainian"
+other = "Ukrainisch"
 
 # --- Buttons ----------------------------------------------------------------
 
 [btn_handled]
-other = "✓ Handled"
+other = "✓ Erledigt"
 
 [btn_ignore]
-other = "✗ Ignore"
+other = "✗ Ignorieren"
 
 [btn_details]
 other = "ℹ Details"
 
 [btn_ign_sender]
-other = "This sender"
+other = "Diesen Absender"
 
 [btn_ign_domain]
-other = "This domain"
+other = "Diese Domain"
 
 [btn_ign_listid]
-other = "This mailing list"
+other = "Diesen Verteiler"
 
 [btn_ign_subject]
-other = "Subject like this"
+other = "Solche Betreffs"
 
 [btn_ign_reason]
-other = "Describe a reason"
+other = "Grund angeben"
 
 [btn_ign_once]
-other = "Just this once"
+other = "Nur diese eine"
 
 [btn_cancel]
-other = "Cancel"
+other = "Abbrechen"
 
 [btn_subj_use]
-other = "Use it"
+other = "Passt"
 
 [btn_subj_edit]
-other = "Edit"
+other = "Ändern"
 
 [btn_prom_rmrule]
-other = "Remove rule"
+other = "Regel löschen"
 
 [btn_prom_allow]
-other = "Add exception"
+other = "Ausnahme hinzufügen"
 
 [btn_prom_keep]
-other = "Keep rule"
+other = "Regel behalten"
 
 [btn_prom_yes]
-other = "Yes, always important"
+other = "Ja, immer wichtig"
 
 [btn_prom_no]
-other = "No, just this time"
+other = "Nein, nur diesmal"
 
 [btn_digest_read]
-other = "✓ Mark read"
+other = "✓ Als gelesen"
 
 [btn_digest_remove]
-other = "🗑 Remove"
+other = "🗑 In den Papierkorb"
 
 # --- Digest -----------------------------------------------------------------
 
 [digest_title]
-other = "🗂 Daily digest — {{.Account}} — {{.Date}}"
+other = "🗂 Tagesübersicht — {{.Account}} — {{.Date}}"
 
 [digest_empty]
-other = "No mail was filtered today."
+other = "Heute wurde nichts gefiltert."
 
 [digest_filtered]
-one = "+{{.Count}} filtered by rules/baseline"
-other = "+{{.Count}} filtered by rules/baseline"
+one = "{{.Count}} weitere E-Mail durch Regeln gefiltert"
+other = "{{.Count}} weitere E-Mails durch Regeln gefiltert"
 
 [digest_keep_hint]
-other = "Reply /important <n,…> to keep an item."
+other = "Antworte /important <n,…>, um eine E-Mail zu behalten."
 
 [digest_reply_hint]
-other = "Reply to a digest message with /important <n,…>."
+other = "Antworte auf eine Übersicht mit /important <n,…>."
 
 [digest_important_usage]
-other = "Usage: /important 3,7"
+other = "Verwendung: /important 3,7"
 
 [digest_promoted]
-one = "Promoted {{.Count}} item to important."
-other = "Promoted {{.Count}} items to important."
+one = "{{.Count}} E-Mail als wichtig markiert."
+other = "{{.Count}} E-Mails als wichtig markiert."
 
 [digest_marked_read]
-one = "✓ {{.Count}} email marked read."
-other = "✓ {{.Count}} emails marked read."
+one = "✓ {{.Count}} E-Mail als gelesen markiert."
+other = "✓ {{.Count}} E-Mails als gelesen markiert."
 
 [digest_moved_trash]
-one = "✓ {{.Count}} email moved to Trash."
-other = "✓ {{.Count}} emails moved to Trash."
+one = "✓ {{.Count}} E-Mail in den Papierkorb verschoben."
+other = "✓ {{.Count}} E-Mails in den Papierkorb verschoben."
 
 [promote_hidden_by_rule]
-other = "Promoted. It was hidden by rule ({{.Rule}})."
+other = "Als wichtig markiert. Sie war durch eine Regel ausgeblendet ({{.Rule}})."
 
 [promote_always_important]
-other = "Promoted. Always treat mail from {{.Sender}} as important?"
+other = "Als wichtig markiert. E-Mails von {{.Sender}} immer als wichtig behandeln?"
 
 # --- Details ----------------------------------------------------------------
 
 [details_title]
-other = "ℹ Email details"
+other = "ℹ E-Mail-Details"
 
 [details_body_unavailable]
-other = "(body unavailable)"
+other = "(Text nicht verfügbar)"
 
 [details_llm_classification]
-other = "LLM classification: {{.Level}} (score {{.Score}})"
+other = "Bewertung des Modells: {{.Level}} (Bewertung {{.Score}})"
 
 [details_rule_classification]
-other = "Rule-based classification: {{.Level}} (score {{.Score}})"
+other = "Bewertung nach Regeln: {{.Level}} (Bewertung {{.Score}})"
 
 [details_classification]
-other = "Classification: {{.Level}} (score {{.Score}})"
+other = "Bewertung: {{.Level}} (Bewertung {{.Score}})"
 
 # --- Ignore / rule flows ----------------------------------------------------
 
 [flow_ignored_no_rule]
-other = "Ignored (no rule)."
+other = "E-Mail ignoriert, keine Regel angelegt."
 
 [flow_no_list_id]
-other = "This email has no List-Id."
+other = "Diese E-Mail hat keinen List-Id-Header."
 
 [flow_reason_unavailable]
-other = "Reason rules are unavailable."
+other = "Regeln nach Begründung sind derzeit nicht verfügbar."
 
 [flow_subject_unavailable]
-other = "Subject rules are unavailable."
+other = "Regeln nach Betreff sind derzeit nicht verfügbar."
 
 [flow_send_reason]
-other = "Send the reason to ignore similar mail (one message)."
+other = "Schicke in einer Nachricht den Grund, ähnliche E-Mails zu ignorieren."
 
 [flow_send_subject_pattern]
-other = "Send the subject pattern to match (one message)."
+other = "Schicke in einer Nachricht das Betreffmuster."
 
 [flow_suggested_pattern]
-other = "Suggested pattern: {{.Pattern}} (matches this sender's subjects)."
+other = "Vorgeschlagenes Muster: {{.Pattern}} (passt auf die Betreffs dieses Absenders)."
 
 [flow_nothing_to_confirm]
-other = "Nothing to confirm."
+other = "Nichts zu bestätigen."
 
 [flow_subject_cancelled]
-other = "Cancelled. The email stays ignored (no subject rule)."
+other = "Abgebrochen. Die E-Mail bleibt ignoriert, es wurde keine Betreffregel angelegt."
 
 [flow_clause_added]
-other = "Ignore clause added (applies to future mail via the LLM)."
+other = "Regel hinzugefügt — das Modell berücksichtigt sie bei neuen E-Mails."
 
 [flow_rule_added_sender]
-other = "Rule added: ignore sender {{.Value}}."
+other = "Regel hinzugefügt: Absender {{.Value}} ignorieren."
 
 [flow_rule_added_domain]
-other = "Rule added: ignore domain {{.Value}}."
+other = "Regel hinzugefügt: Domain {{.Value}} ignorieren."
 
 [flow_rule_added_list]
-other = "Rule added: ignore list {{.Value}}."
+other = "Regel hinzugefügt: Verteiler {{.Value}} ignorieren."
 
 [flow_rule_added_subject]
-other = "Rule added: ignore subject ~ {{.Pattern}}."
+other = "Regel hinzugefügt: Betreff ~ {{.Pattern}} ignorieren."
 
 [flow_rule_added_subject_from]
-other = "Rule added: ignore subject ~ {{.Pattern}} from {{.Sender}}."
+other = "Regel hinzugefügt: Betreff ~ {{.Pattern}} von {{.Sender}} ignorieren."
 
 [flow_rule_removed]
-other = "Rule removed."
+other = "Regel gelöscht."
 
 [flow_email_unavailable]
-other = "Email no longer available."
+other = "Die E-Mail ist nicht mehr verfügbar."
 
 [flow_allow_sender_added]
-other = "Added: always treat mail from {{.Sender}} as important."
+other = "Hinzugefügt: E-Mails von {{.Sender}} immer als wichtig behandeln."
 
 [flow_ok]
-other = "OK."
+other = "Erledigt."
 
 # --- Re-authorization alert -------------------------------------------------
 
 [reauth_title]
-other = "⚠️ Email authorization expired"
+other = "⚠️ Zugriff auf das Postfach abgelaufen"
 
 [reauth_body]
-other = "The Google sign-in for this mailbox has expired, so I can no longer check it. New emails from this account won't be delivered until you re-authorize."
+other = "Die Google-Anmeldung für dieses Postfach ist abgelaufen, ich kann es nicht mehr abrufen. Neue E-Mails aus diesem Konto kommen erst wieder an, wenn du den Zugriff erneut bestätigst."
 
 [reauth_steps_title]
-other = "To fix, on the machine running email-agent:"
+other = "Auf dem Rechner, auf dem email-agent läuft:"
 
 [reauth_step_edit]
-other = "Run {{.Command}}"
+other = "Führe {{.Command}} aus"
 
 [reauth_step_consent]
-other = "Answer y to \"Re-authorize with Google now?\" and complete the Google consent in the browser."
+other = "Beantworte „Re-authorize with Google now?\" mit y und bestätige den Zugriff im Browser."
 
 [reauth_step_restart]
-other = "Restart the daemon: {{.Command}}"
+other = "Starte den Daemon neu: {{.Command}}"
 
 [reauth_note_testing]
-other = "Gmail in \"Testing\" mode expires this roughly every 7 days."
+other = "Im Modus „Testing\" läuft der Gmail-Zugriff etwa alle 7 Tage ab."

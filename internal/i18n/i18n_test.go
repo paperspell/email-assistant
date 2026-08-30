@@ -1,6 +1,9 @@
 package i18n
 
 import (
+	"regexp"
+	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,4 +107,101 @@ func TestPrinter_TemplateDoesNotEscapeHTML(t *testing.T) {
 	out := p.T("reauth_step_edit", "Command", "<code>email-agent account edit a@b.com</code>")
 	assert.Contains(t, out, "<code>email-agent account edit a@b.com</code>")
 	assert.NotContains(t, out, "&lt;code&gt;")
+}
+
+// Plural forms differ per language: Polish and the East Slavic locales need
+// one/few/many/other, Hebrew needs two, Kazakh only one/other. A catalog missing
+// a form its language requires does not fail to load — go-i18n simply cannot
+// localize that count, and the id leaks into the message. This walks every
+// locale, every plural message and the counts that select each CLDR category.
+func TestCatalogs_HaveEveryPluralFormTheyNeed(t *testing.T) {
+	pluralIDs := []string{
+		"digest_filtered", "digest_promoted",
+		"digest_marked_read", "digest_moved_trash",
+	}
+	counts := []int{0, 1, 2, 3, 5, 7, 11, 21, 22, 25, 100, 101}
+
+	for _, loc := range Supported {
+		p, err := NewPrinter(loc)
+		require.NoError(t, err)
+		for _, id := range pluralIDs {
+			for _, n := range counts {
+				got := p.N(id, n)
+				assert.NotEqual(t, id, got,
+					"locale %s has no plural form for %s at count %d", loc, id, n)
+				assert.Contains(t, got, strconv.Itoa(n),
+					"locale %s dropped the count from %s at %d", loc, id, n)
+			}
+		}
+	}
+}
+
+// A translation that drops a placeholder does not fail to load — it silently
+// renders a message with the data missing, e.g. an importance line with no
+// score. Every catalog must carry exactly the placeholders English declares.
+func TestCatalogs_PreservePlaceholders(t *testing.T) {
+	want := placeholders(t, "en")
+	require.NotEmpty(t, want)
+
+	for _, loc := range Supported {
+		if loc == "en" {
+			continue
+		}
+		got := placeholders(t, loc)
+		for id, ph := range want {
+			assert.Equal(t, ph, got[id],
+				"locale %s: placeholders of %s differ from English", loc, id)
+		}
+	}
+}
+
+// Slash commands are typed by the user into Telegram, so they must survive
+// translation verbatim — a localized "/ważne" would simply not work.
+func TestCatalogs_KeepCommandsLiteral(t *testing.T) {
+	for _, loc := range Supported {
+		p, err := NewPrinter(loc)
+		require.NoError(t, err)
+		for _, id := range []string{"digest_keep_hint", "digest_reply_hint", "digest_important_usage"} {
+			assert.Contains(t, p.T(id), "/important",
+				"locale %s dropped the /important command from %s", loc, id)
+		}
+	}
+}
+
+// placeholders maps each message id to the sorted set of {{.Name}} templates it
+// uses, across every plural form.
+func placeholders(t *testing.T, locale string) map[string][]string {
+	t.Helper()
+	data, err := catalogs.ReadFile("locales/" + locale + ".toml")
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, tomlUnmarshal(data, &raw))
+
+	re := regexp.MustCompile(`{{\s*\.(\w+)\s*}}`)
+	out := make(map[string][]string, len(raw))
+	for id, v := range raw {
+		seen := map[string]bool{}
+		switch m := v.(type) {
+		case map[string]any:
+			for _, form := range m {
+				if s, ok := form.(string); ok {
+					for _, g := range re.FindAllStringSubmatch(s, -1) {
+						seen[g[1]] = true
+					}
+				}
+			}
+		case string:
+			for _, g := range re.FindAllStringSubmatch(m, -1) {
+				seen[g[1]] = true
+			}
+		}
+		names := make([]string, 0, len(seen))
+		for n := range seen {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		out[id] = names
+	}
+	return out
 }
