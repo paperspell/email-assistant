@@ -134,3 +134,32 @@ func TestExtractText_Latin1Charset(t *testing.T) {
 	require.NotEmpty(t, out)
 	assert.Equal(t, "Facture payée", out)
 }
+
+func TestExtractText_FallbackSeesTheBodyAfterAFailedParse(t *testing.T) {
+	// A message whose MIME walk yields nothing: the declared multipart boundary
+	// never appears, so there are no parts to collect. The documented fallback is
+	// to strip the raw body — which only works if the body reader has not already
+	// been drained by the walk.
+	msg := "Subject: s\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/alternative; boundary=\"nope\"\r\n" +
+		"\r\n" +
+		"<p>The letter is here after all.</p>\r\n"
+
+	out := extractText([]byte(msg))
+
+	assert.Contains(t, out, "The letter is here after all.")
+	assert.NotContains(t, out, "<p>")
+}
+
+func TestNewlineStripper_DoesNotReturnZeroWithoutError(t *testing.T) {
+	// A chunk that is entirely line breaks must not surface as (0, nil): callers
+	// are entitled to read that as no progress and spin forever.
+	r := newlineStripper{strings.NewReader("\r\n\r\n\r\n\r\nQUFB")}
+	buf := make([]byte, 4)
+
+	n, err := r.Read(buf)
+
+	require.NoError(t, err)
+	assert.Positive(t, n, "a read that consumed only line breaks must keep going")
+}

@@ -35,15 +35,18 @@ func extractText(raw []byte) string {
 	if err != nil {
 		return normalizeText(stripHTML(string(raw)))
 	}
-	text, err := partText(mailHeader(msg.Header), msg.Body, 0)
-	if err != nil || strings.TrimSpace(text) == "" {
-		body, rerr := io.ReadAll(msg.Body)
-		if rerr != nil || len(bytes.TrimSpace(body)) == 0 {
-			return normalizeText(text)
-		}
-		return normalizeText(stripHTML(string(body)))
+	// The body is buffered because the walk consumes the reader: without a copy
+	// the fallback below would strip an already-drained reader and return "".
+	body, err := io.ReadAll(msg.Body)
+	if err != nil {
+		return normalizeText(stripHTML(string(raw)))
 	}
-	return normalizeText(text)
+
+	text, err := partText(mailHeader(msg.Header), bytes.NewReader(body), 0)
+	if err == nil && strings.TrimSpace(text) != "" {
+		return normalizeText(text)
+	}
+	return normalizeText(stripHTML(string(body)))
 }
 
 // header is the subset of the MIME headers the walk needs, so top-level
@@ -175,17 +178,25 @@ type newlineStripper struct{ r io.Reader }
 //
 //nolint:wrapcheck // an io.Reader adapter must pass the underlying error through
 func (s newlineStripper) Read(p []byte) (int, error) {
-	n, err := s.r.Read(p)
-	if n > 0 {
-		filtered := p[:0]
-		for _, b := range p[:n] {
-			if b != '\r' && b != '\n' {
-				filtered = append(filtered, b)
+	// Keep reading until at least one byte survives filtering. A chunk that is
+	// entirely line breaks would otherwise return (0, nil), which callers are
+	// entitled to read as no progress — and base64 payloads are wrapped often
+	// enough for that to happen.
+	for {
+		n, err := s.r.Read(p)
+		if n > 0 {
+			filtered := p[:0]
+			for _, b := range p[:n] {
+				if b != '\r' && b != '\n' {
+					filtered = append(filtered, b)
+				}
 			}
+			n = len(filtered)
 		}
-		n = len(filtered)
+		if n > 0 || err != nil {
+			return n, err
+		}
 	}
-	return n, err
 }
 
 var (
