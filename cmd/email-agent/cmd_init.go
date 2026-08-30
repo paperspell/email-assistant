@@ -402,8 +402,17 @@ func promptModel(sc *bufio.Scanner, provider, current string) (string, error) {
 	if def == "" {
 		def = llm.DefaultModel(provider)
 	}
-	answer := promptText(sc, "  Choice", def)
-	return llm.ResolveModelChoice(provider, strings.TrimSpace(answer), current)
+	// Re-prompt rather than abort: this runs in the middle of the wizard, and a
+	// mistyped number should not throw away everything answered before it. An
+	// empty answer always resolves, so an exhausted scanner ends the loop.
+	for {
+		answer := promptText(sc, "  Choice", def)
+		model, err := llm.ResolveModelChoice(provider, strings.TrimSpace(answer), current)
+		if err == nil {
+			return model, nil
+		}
+		fmt.Printf("    %v\n", err)
+	}
 }
 
 func configureLLM(

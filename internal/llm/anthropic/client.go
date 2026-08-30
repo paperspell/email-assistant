@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	defaultModel = "claude-sonnet-5"
-	maxTokens    = int64(512)
+	maxTokens = int64(512)
 )
 
 // classifyToolName is the tool the model is forced to call.
@@ -45,7 +44,7 @@ type Client struct {
 // New creates a Client. model may be empty to use the default.
 func New(apiKey, model string) *Client {
 	if model == "" {
-		model = defaultModel
+		model = llm.DefaultModel("anthropic")
 	}
 	return &Client{
 		client: anthropicsdk.NewClient(option.WithAPIKey(apiKey)),
@@ -56,7 +55,7 @@ func New(apiKey, model string) *Client {
 // NewWithBaseURL creates a Client pointing at a custom base URL (used in tests).
 func NewWithBaseURL(apiKey, model, baseURL string) *Client {
 	if model == "" {
-		model = defaultModel
+		model = llm.DefaultModel("anthropic")
 	}
 	return &Client{
 		client: anthropicsdk.NewClient(

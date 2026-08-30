@@ -113,3 +113,31 @@ func TestDetectTelegramChatID_DoesNotSleepInTests(t *testing.T) {
 	_ = detectTelegramChatID("123:abc", scanner("1\n"), "")
 	require.Less(t, time.Since(start), 500*time.Millisecond)
 }
+
+func TestPromptModel_RePromptsOnBadNumber(t *testing.T) {
+	// Опечатка в номере не должна ронять мастер: спрашиваем снова.
+	sc := bufio.NewScanner(strings.NewReader("9\n2\n"))
+
+	got, err := promptModel(sc, "anthropic", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, "claude-opus-5", got)
+}
+
+func TestPromptModel_EmptyKeepsCurrent(t *testing.T) {
+	sc := bufio.NewScanner(strings.NewReader("\n"))
+
+	got, err := promptModel(sc, "anthropic", "claude-haiku-4-5")
+
+	require.NoError(t, err)
+	assert.Equal(t, "claude-haiku-4-5", got)
+}
+
+func TestPromptModel_AcceptsUnlistedID(t *testing.T) {
+	sc := bufio.NewScanner(strings.NewReader("claude-future-9\n"))
+
+	got, err := promptModel(sc, "anthropic", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, "claude-future-9", got)
+}

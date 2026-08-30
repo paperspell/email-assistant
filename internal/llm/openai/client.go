@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	defaultModel = "gpt-5.6-terra"
-	maxTokens    = 512
+	maxTokens = 512
 )
 
 // Client classifies emails using the OpenAI Chat Completions API with JSON mode.
@@ -25,7 +24,7 @@ type Client struct {
 // New creates a Client. model may be empty to use the default.
 func New(apiKey, model string) *Client {
 	if model == "" {
-		model = defaultModel
+		model = llm.DefaultModel("openai")
 	}
 	return &Client{
 		client: openaisdk.NewClient(apiKey),
@@ -36,7 +35,7 @@ func New(apiKey, model string) *Client {
 // NewWithBaseURL creates a Client pointing at a custom base URL (used in tests).
 func NewWithBaseURL(apiKey, model, baseURL string) *Client {
 	if model == "" {
-		model = defaultModel
+		model = llm.DefaultModel("openai")
 	}
 	cfg := openaisdk.DefaultConfig(apiKey)
 	cfg.BaseURL = baseURL
