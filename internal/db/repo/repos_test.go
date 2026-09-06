@@ -321,3 +321,48 @@ func TestClassificationRepo_GetAllByEmailIDs_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
+
+func TestSyncStateRepo_DeleteMakesTheNextPollAFirstRun(t *testing.T) {
+	ctx := context.Background()
+	r := NewSyncStateRepo(openTestDB(t))
+
+	require.NoError(t, r.Upsert(ctx, domain.SyncState{
+		AccountID: "a@b.com", LastUID: 4200, SyncedAt: time.Now(),
+	}))
+	stored, err := r.Get(ctx, "a@b.com")
+	require.NoError(t, err)
+	require.NotNil(t, stored, "precondition: the state must exist before it is deleted")
+
+	require.NoError(t, r.Delete(ctx, "a@b.com"))
+
+	// The scheduler treats a nil state as a first run — that is what re-enables
+	// the backfill window.
+	got, err := r.Get(ctx, "a@b.com")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestSyncStateRepo_DeleteLeavesOtherAccountsAlone(t *testing.T) {
+	ctx := context.Background()
+	r := NewSyncStateRepo(openTestDB(t))
+
+	require.NoError(t, r.Upsert(ctx, domain.SyncState{
+		AccountID: "keep@b.com", LastUID: 10, SyncedAt: time.Now(),
+	}))
+	require.NoError(t, r.Upsert(ctx, domain.SyncState{
+		AccountID: "drop@b.com", LastUID: 20, SyncedAt: time.Now(),
+	}))
+
+	require.NoError(t, r.Delete(ctx, "drop@b.com"))
+
+	kept, err := r.Get(ctx, "keep@b.com")
+	require.NoError(t, err)
+	require.NotNil(t, kept, "resetting one account must not re-backfill every other one")
+	assert.Equal(t, uint32(10), kept.LastUID)
+}
+
+func TestSyncStateRepo_DeleteIsIdempotent(t *testing.T) {
+	// The caller's intent — no sync state for this account — already holds, so a
+	// second reset is not an error the operator needs to see.
+	require.NoError(t, NewSyncStateRepo(openTestDB(t)).Delete(context.Background(), "never@seen.com"))
+}
