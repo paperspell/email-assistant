@@ -39,6 +39,7 @@ func newAccountCmd(dbPath *string) *cobra.Command {
 		newAccountRemoveCmd(dbPath),
 		newAccountToggleCmd(dbPath, true),
 		newAccountToggleCmd(dbPath, false),
+		newAccountResetSyncCmd(dbPath),
 	)
 	return accountCmd
 }
@@ -99,6 +100,51 @@ func newAccountRemoveCmd(dbPath *string) *cobra.Command {
 			})
 		},
 	}
+}
+
+func newAccountResetSyncCmd(dbPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "reset-sync <email|name>",
+		Short: "Forget where polling left off, so the next poll backfills again",
+		Long: "Deletes the account's sync state. The next poll is then treated as a first run: " +
+			"it processes unread mail within the account's backfill window and re-establishes " +
+			"the baseline.\n\n" +
+			"Changing the backfill window alone does nothing on an account that has already " +
+			"polled, because the window is only consulted on a first run.\n\n" +
+			"Mail already stored is not notified a second time.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withDB(cmd.Context(), resolveDBPath(*dbPath), func(ctx context.Context, sqlDB *sql.DB) error {
+				return runAccountResetSync(ctx, repo.NewAccountRepo(sqlDB), repo.NewSyncStateRepo(sqlDB), args[0])
+			})
+		},
+	}
+}
+
+func runAccountResetSync(
+	ctx context.Context, ar *repo.AccountRepo, sr *repo.SyncStateRepo, ref string,
+) error {
+	acc, err := ar.Get(ctx, ref)
+	if err != nil {
+		return err
+	}
+	if acc == nil {
+		return fmt.Errorf("no account matching %q", ref)
+	}
+	if err := sr.Delete(ctx, acc.ID); err != nil {
+		return err
+	}
+	if acc.BackfillWindow <= 0 {
+		// Without a window the next poll re-baselines and processes nothing, which
+		// is unlikely to be what the caller wanted.
+		fmt.Printf("Reset sync state for %s. Backfill is off, so the next poll will "+
+			"only re-establish the baseline — set a window with 'account edit %s'.\n",
+			acc.Email, acc.Email)
+		return nil
+	}
+	fmt.Printf("Reset sync state for %s. The next poll will process unread mail from the "+
+		"last %s. Restart the daemon to poll now.\n", acc.Email, acc.BackfillWindow)
+	return nil
 }
 
 func newAccountToggleCmd(dbPath *string, enable bool) *cobra.Command {

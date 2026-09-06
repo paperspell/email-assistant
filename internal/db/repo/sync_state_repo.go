@@ -62,3 +62,18 @@ func (r *SyncStateRepo) Upsert(ctx context.Context, s domain.SyncState) error {
 	}
 	return nil
 }
+
+// Delete removes an account's sync state, so the next poll is treated as a first
+// run: it backfills the account's configured window and re-establishes the
+// baseline. Deleting a state that is not there is not an error — the caller's
+// intent (no sync state for this account) already holds.
+//
+// Mail already stored is not re-notified: processMessage skips any message whose
+// row is no longer new, so a reset replays only what was never processed.
+func (r *SyncStateRepo) Delete(ctx context.Context, accountID string) error {
+	const q = `DELETE FROM sync_state WHERE account_id = ?`
+	if _, err := r.db.ExecContext(ctx, q, accountID); err != nil {
+		return fmt.Errorf("delete sync state: %w", err)
+	}
+	return nil
+}
