@@ -17,7 +17,10 @@ import (
 // Sender delivers a built digest to the user and returns the message id used to
 // map replies/buttons back to it. The digestID is embedded in the button data.
 type Sender interface {
-	SendDigest(ctx context.Context, text, digestID string) (int64, error)
+	// SendDigest sends the digest's parts in order, attaching the Mark read /
+	// Remove buttons to the last one, and returns every message id sent. When
+	// a part fails, the ids sent before it are returned alongside the error.
+	SendDigest(ctx context.Context, parts []string, digestID string) ([]int64, error)
 }
 
 // Config holds the dependencies for one account's digest scheduler.
@@ -104,9 +107,13 @@ func (s *Scheduler) runOnce(ctx context.Context) error {
 	}
 
 	digestID := idx.GenerateID()
-	msgID, err := s.cfg.Sender.SendDigest(ctx, FormatTelegram(s.cfg.Printer, d, s.cfg.AccountEmail), digestID)
+	parts := FormatTelegram(s.cfg.Printer, d, s.cfg.AccountEmail)
+	msgIDs, err := s.cfg.Sender.SendDigest(ctx, parts, digestID)
 	if err != nil {
-		return fmt.Errorf("send digest: %w", err)
+		// Parts already delivered stay in the chat without buttons. They are
+		// named here so the leftovers can be traced to this failure.
+		return fmt.Errorf("send digest (%d of %d parts delivered, ids %v): %w",
+			len(msgIDs), len(parts), msgIDs, err)
 	}
 
 	items := make([]domain.DigestItem, 0, len(d.Items))
@@ -114,16 +121,18 @@ func (s *Scheduler) runOnce(ctx context.Context) error {
 		items = append(items, domain.DigestItem{DigestID: digestID, SeqNo: it.SeqNo, EmailID: it.Email.ID})
 	}
 	if err := s.cfg.DigestRepo.Save(ctx, domain.Digest{
-		ID:          digestID,
-		AccountID:   s.cfg.AccountID,
-		Date:        date,
-		TGMessageID: msgID,
-		SentAt:      s.cfg.Now().UTC(),
+		ID:           digestID,
+		AccountID:    s.cfg.AccountID,
+		Date:         date,
+		TGMessageID:  msgIDs[len(msgIDs)-1], // the part carrying the buttons
+		TGMessageIDs: msgIDs,
+		SentAt:       s.cfg.Now().UTC(),
 	}, items); err != nil {
 		return fmt.Errorf("save digest: %w", err)
 	}
 	s.cfg.Logger.Info("digest sent",
-		"account_id", s.cfg.AccountID, "date", date, "items", len(d.Items), "filtered", d.Counter.Total)
+		"account_id", s.cfg.AccountID, "date", date, "items", len(d.Items),
+		"parts", len(parts), "filtered", d.Counter.Total)
 	return nil
 }
 

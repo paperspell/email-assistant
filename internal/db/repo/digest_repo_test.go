@@ -72,3 +72,42 @@ func TestDigestRepo_UniquePerAccountDate(t *testing.T) {
 	d2 := domain.Digest{ID: "d2", AccountID: "a", Date: "2026-06-26", SentAt: time.Now()}
 	assert.Error(t, r.Save(ctx, d2, nil), "a second digest for the same account/date is rejected")
 }
+
+func TestDigestRepo_SplitDigestResolvesFromAnyPart(t *testing.T) {
+	r := NewDigestRepo(openTestDB(t))
+	ctx := context.Background()
+
+	d := domain.Digest{
+		ID: "dig-split", AccountID: "a@x.com", Date: "2026-09-11",
+		TGMessageID:  903, // the part with the buttons
+		TGMessageIDs: []int64{901, 902, 903},
+		SentAt:       time.Now().UTC(),
+	}
+	require.NoError(t, r.Save(ctx, d, []domain.DigestItem{{DigestID: "dig-split", SeqNo: 1, EmailID: "e1"}}))
+
+	// A user replies /important to whichever part the item they mean is in.
+	for _, msgID := range []int64{901, 902, 903} {
+		got, err := r.GetByTGMessageID(ctx, msgID)
+		require.NoError(t, err)
+		require.NotNil(t, got, "part %d must resolve to the digest", msgID)
+		assert.Equal(t, "dig-split", got.ID)
+		// Whichever part was replied to, the keyboard to remove is on the last.
+		assert.Equal(t, int64(903), got.TGMessageID)
+	}
+}
+
+func TestDigestRepo_SingleMessageDigestNeedsNoPartList(t *testing.T) {
+	// Callers that predate splitting set only TGMessageID; that message must
+	// still be registered as the sole part, or replies to it would stop resolving.
+	r := NewDigestRepo(openTestDB(t))
+	ctx := context.Background()
+
+	require.NoError(t, r.Save(ctx, domain.Digest{
+		ID: "dig-one", AccountID: "a@x.com", Date: "2026-09-11", TGMessageID: 77, SentAt: time.Now(),
+	}, nil))
+
+	got, err := r.GetByTGMessageID(ctx, 77)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "dig-one", got.ID)
+}

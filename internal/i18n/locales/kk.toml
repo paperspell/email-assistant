@@ -156,6 +156,9 @@ other = "🗑 Себетке"
 [digest_title]
 other = "🗂 Күнделікті жинақ — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Күнделікті жинақ — {{.Account}} — {{.Date}} — {{.Total}} бөлімнің {{.Part}}-бөлімі"
+
 [digest_empty]
 other = "Бүгін ешқандай хат сүзілген жоқ."
 

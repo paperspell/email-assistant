@@ -156,6 +156,9 @@ other = "🗑 Para o lixo"
 [digest_title]
 other = "🗂 Resumo diário — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Resumo diário — {{.Account}} — {{.Date}} — parte {{.Part}} de {{.Total}}"
+
 [digest_empty]
 other = "Hoje não foi filtrado nenhum e-mail."
 
