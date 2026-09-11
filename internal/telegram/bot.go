@@ -45,20 +45,29 @@ func (b *Bot) SendNewEmail(
 	return msg.MessageId, nil
 }
 
-// SendDigest sends the daily digest with bulk Mark read / Remove buttons that
-// carry the digest id. Returns the Telegram message id (used to map replies).
-func (b *Bot) SendDigest(_ context.Context, text, digestID string) (int64, error) {
-	keyboard := gotgbot.InlineKeyboardMarkup{
-		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
-			{Text: b.p.T("btn_digest_read"), CallbackData: "digest_read:" + digestID},
-			{Text: b.p.T("btn_digest_remove"), CallbackData: "digest_remove:" + digestID},
-		}},
+// SendDigest sends the digest's parts in order. Only the last carries the bulk
+// Mark read / Remove buttons, which act on the whole digest: one press marks
+// everything listed, however many messages it took. Returns the message ids
+// sent so far, so a failure mid-way still names the parts already in the chat.
+func (b *Bot) SendDigest(_ context.Context, parts []string, digestID string) ([]int64, error) {
+	ids := make([]int64, 0, len(parts))
+	for i, text := range parts {
+		var opts *gotgbot.SendMessageOpts
+		if i == len(parts)-1 {
+			opts = &gotgbot.SendMessageOpts{ReplyMarkup: gotgbot.InlineKeyboardMarkup{
+				InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
+					{Text: b.p.T("btn_digest_read"), CallbackData: "digest_read:" + digestID},
+					{Text: b.p.T("btn_digest_remove"), CallbackData: "digest_remove:" + digestID},
+				}},
+			}}
+		}
+		msg, err := b.bot.SendMessage(b.chatID, text, opts)
+		if err != nil {
+			return ids, fmt.Errorf("telegram send digest part %d/%d: %w", i+1, len(parts), err)
+		}
+		ids = append(ids, msg.MessageId)
 	}
-	msg, err := b.bot.SendMessage(b.chatID, text, &gotgbot.SendMessageOpts{ReplyMarkup: keyboard})
-	if err != nil {
-		return 0, fmt.Errorf("telegram send digest: %w", err)
-	}
-	return msg.MessageId, nil
+	return ids, nil
 }
 
 // AnswerCallback dismisses the loading spinner on a callback query.

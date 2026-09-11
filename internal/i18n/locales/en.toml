@@ -161,6 +161,9 @@ other = "🗑 Remove"
 [digest_title]
 other = "🗂 Daily digest — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Daily digest — {{.Account}} — {{.Date}} — part {{.Part}} of {{.Total}}"
+
 [digest_empty]
 other = "No mail was filtered today."
 

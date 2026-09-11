@@ -156,6 +156,9 @@ other = "🗑 Nel cestino"
 [digest_title]
 other = "🗂 Riepilogo giornaliero — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Riepilogo giornaliero — {{.Account}} — {{.Date}} — parte {{.Part}} di {{.Total}}"
+
 [digest_empty]
 other = "Oggi non è stata filtrata nessuna email."
 

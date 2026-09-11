@@ -156,6 +156,9 @@ other = "🗑 À la corbeille"
 [digest_title]
 other = "🗂 Résumé du jour — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Résumé du jour — {{.Account}} — {{.Date}} — partie {{.Part}} sur {{.Total}}"
+
 [digest_empty]
 other = "Aucun e-mail filtré aujourd'hui."
 

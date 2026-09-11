@@ -137,7 +137,10 @@ func TestFormatTelegram_ListsSenderTimeAndScore(t *testing.T) {
 		Counter: Counter{Total: 2},
 	}
 
-	out := FormatTelegram(i18n.English(), d, testAcct)
+	parts := FormatTelegram(i18n.English(), d, testAcct)
+	// A digest that fits is one message, exactly as before splitting existed.
+	require.Len(t, parts, 1)
+	out := parts[0]
 
 	// Subject on its own line, then sender, receipt time and the labelled score.
 	assert.Contains(t, out, "1. 5 jobs\n   LinkedIn <jobs@linkedin.com> · 09:14 · importance 22\n\n")
@@ -159,7 +162,9 @@ func TestFormatTelegram_OmitsTheProvenanceCounter(t *testing.T) {
 		Counter: Counter{Total: 1, ByRule: map[string]int{"rule:x": 1}},
 	}
 
-	out := FormatTelegram(i18n.English(), d, testAcct)
+	parts := FormatTelegram(i18n.English(), d, testAcct)
+	require.Len(t, parts, 1)
+	out := parts[0]
 
 	assert.NotContains(t, out, "filtered")
 	assert.NotContains(t, out, "+1")

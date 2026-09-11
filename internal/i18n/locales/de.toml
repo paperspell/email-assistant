@@ -156,6 +156,9 @@ other = "🗑 In den Papierkorb"
 [digest_title]
 other = "🗂 Tagesübersicht — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Tagesübersicht — {{.Account}} — {{.Date}} — Teil {{.Part}} von {{.Total}}"
+
 [digest_empty]
 other = "Heute wurde nichts gefiltert."
 

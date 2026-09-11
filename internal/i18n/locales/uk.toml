@@ -156,6 +156,9 @@ other = "🗑 До кошика"
 [digest_title]
 other = "🗂 Денне зведення — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Денне зведення — {{.Account}} — {{.Date}} — частина {{.Part}} з {{.Total}}"
+
 [digest_empty]
 other = "Сьогодні нічого не відфільтровано."
 

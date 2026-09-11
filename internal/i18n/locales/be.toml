@@ -156,6 +156,9 @@ other = "🗑 У сметніцу"
 [digest_title]
 other = "🗂 Дзённая зводка — {{.Account}} — {{.Date}}"
 
+[digest_title_part]
+other = "🗂 Дзённая зводка — {{.Account}} — {{.Date}} — частка {{.Part}} з {{.Total}}"
+
 [digest_empty]
 other = "Сёння нічога не адфільтравана."
 

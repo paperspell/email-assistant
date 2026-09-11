@@ -20,7 +20,9 @@ func NewDigestRepo(db *sql.DB) *DigestRepo {
 	return &DigestRepo{db: db}
 }
 
-// Save inserts a digest and its items in one transaction.
+// Save inserts a digest, the Telegram messages it was sent as, and its items in
+// one transaction. d.TGMessageIDs must list every part in order; when it is
+// empty, d.TGMessageID is registered as the single part.
 func (r *DigestRepo) Save(ctx context.Context, d domain.Digest, items []domain.DigestItem) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -34,6 +36,19 @@ func (r *DigestRepo) Save(ctx context.Context, d domain.Digest, items []domain.D
 		d.ID, d.AccountID, d.Date, d.TGMessageID, d.SentAt.UTC().Format(time.RFC3339),
 	); err != nil {
 		return fmt.Errorf("insert digest: %w", err)
+	}
+	parts := d.TGMessageIDs
+	if len(parts) == 0 && d.TGMessageID != 0 {
+		parts = []int64{d.TGMessageID}
+	}
+	for i, msgID := range parts {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO digest_messages (digest_id, part_no, tg_message_id)
+			VALUES (?, ?, ?)`,
+			d.ID, i+1, msgID,
+		); err != nil {
+			return fmt.Errorf("insert digest message: %w", err)
+		}
 	}
 	for _, it := range items {
 		if _, err := tx.ExecContext(ctx, `
@@ -50,10 +65,15 @@ func (r *DigestRepo) Save(ctx context.Context, d domain.Digest, items []domain.D
 	return nil
 }
 
-// GetByTGMessageID returns the digest sent as the given Telegram message, or nil.
+// GetByTGMessageID returns the digest any of whose parts was sent as the given
+// Telegram message, or nil. A reply to the first part of a split digest must
+// resolve as well as a reply to the part with the buttons.
 func (r *DigestRepo) GetByTGMessageID(ctx context.Context, msgID int64) (*domain.Digest, error) {
-	return r.get(ctx,
-		`SELECT id, account_id, digest_date, tg_message_id, sent_at FROM digests WHERE tg_message_id = ?`, msgID)
+	return r.get(ctx, `
+		SELECT d.id, d.account_id, d.digest_date, d.tg_message_id, d.sent_at
+		FROM digests d
+		JOIN digest_messages m ON m.digest_id = d.id
+		WHERE m.tg_message_id = ?`, msgID)
 }
 
 // GetByAccountAndDate returns the digest for an account on a date, or nil.

@@ -43,7 +43,14 @@ func newDigestShowCmd(dbPath *string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Println(digest.FormatTelegram(printer, d, acc.Email))
+				// Parts are printed the way Telegram would receive them, with a
+				// divider so a split is visible in the preview.
+				for i, part := range digest.FormatTelegram(printer, d, acc.Email) {
+					if i > 0 {
+						fmt.Print("\n────────── next message ──────────\n\n")
+					}
+					fmt.Println(part)
+				}
 				fmt.Println()
 				fmt.Println(digest.FormatCounter(d))
 				return nil
