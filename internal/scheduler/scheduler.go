@@ -41,7 +41,12 @@ type Config struct {
 	ContentMode        string
 	// SummaryLanguage is the language LLM summaries are written in. Empty
 	// leaves them in English.
-	SummaryLanguage     string
+	SummaryLanguage string
+	// Focus and Aliases are the account's focus-mode settings, passed to the
+	// classifier so it knows what the owner wants to hear about and how the
+	// owner is addressed. Empty Focus leaves classification as it was.
+	Focus               string
+	Aliases             []string
 	ScoreDivergenceWarn int
 	Provider            email.Provider
 	Notifier            telegram.Notifier
@@ -394,7 +399,7 @@ func (s *Scheduler) processMessage(
 	classification := ruleClass
 	llmDecided := false
 	if s.cfg.LLMProvider != nil {
-		req := buildLLMRequest(msg, lang, s.cfg.ContentMode)
+		req := s.applyFocus(buildLLMRequest(msg, lang, s.cfg.ContentMode))
 		req.IgnoreClauses = clauseTexts
 		req.SummaryLanguage = s.cfg.SummaryLanguage
 		llmResult, llmErr := s.cfg.LLMProvider.Classify(ctx, req)
@@ -590,10 +595,24 @@ func buildLLMRequest(msg email.Message, lang, contentMode string) llm.ClassifyRe
 	return llm.ClassifyRequest{
 		FromEmail:          msg.FromEmail,
 		FromName:           msg.FromName,
+		To:                 msg.To,
+		Cc:                 msg.Cc,
 		Subject:            msg.Subject,
 		Body:               body,
 		Language:           lang,
 		IsReply:            msg.InReplyTo != "",
 		HasListUnsubscribe: msg.ListUnsubscribe != "",
 	}
+}
+
+// applyFocus attaches the account's focus-mode settings to a request. The owner
+// is named only when a focus is set: an unfocused account keeps the exact
+// prompt it always had, so its classifications do not drift.
+func (s *Scheduler) applyFocus(req llm.ClassifyRequest) llm.ClassifyRequest {
+	if s.cfg.Focus == "" {
+		return req
+	}
+	req.Focus = s.cfg.Focus
+	req.Owner = llm.Owner{Email: s.cfg.AccountEmail, Name: s.cfg.AccountName, Aliases: s.cfg.Aliases}
+	return req
 }

@@ -11,7 +11,12 @@ type Message struct {
 	Subject   string
 	FromEmail string
 	FromName  string
-	Date      time.Time
+	// To and Cc hold the recipient addresses, lowercased. They tell a message
+	// addressed to the mailbox owner apart from one where the owner is merely
+	// copied or reached through a list — the difference focus mode turns on.
+	To   []string
+	Cc   []string
+	Date time.Time
 	// Extra header fields used by the importance filter
 	InReplyTo       string // set when this is a reply in an active thread
 	ListUnsubscribe string // set on newsletters

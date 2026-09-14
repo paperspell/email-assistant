@@ -190,11 +190,21 @@ func runAccountList(ctx context.Context, ar *repo.AccountRepo) error {
 		return nil
 	}
 
-	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %s\n", "NAME", "EMAIL", "HOST", "ENABLED", "AUTH")
-	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %s\n",
-		strings.Repeat("-", 20), strings.Repeat("-", 28), strings.Repeat("-", 24), "-------", "----")
+	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %-8s  %-6s  %s\n",
+		"NAME", "EMAIL", "HOST", "ENABLED", "AUTH", "DIGEST", "FOCUS")
+	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %-8s  %-6s  %s\n",
+		strings.Repeat("-", 20), strings.Repeat("-", 28), strings.Repeat("-", 24),
+		"-------", "--------", "------", "-----")
 	for _, a := range accounts {
-		fmt.Printf("%-20s  %-28s  %-24s  %-7v  %s\n", a.Name, a.Email, a.Host, a.Enabled, a.AuthType)
+		digest, focus := "on", "-"
+		if !a.DigestEnabled {
+			digest = "off"
+		}
+		if a.Focus != "" {
+			focus = "yes"
+		}
+		fmt.Printf("%-20s  %-28s  %-24s  %-7v  %-8s  %-6s  %s\n",
+			a.Name, a.Email, a.Host, a.Enabled, a.AuthType, digest, focus)
 	}
 	return nil
 }
@@ -249,6 +259,10 @@ func addOrEditAccount(
 		// the user can just press Enter.
 		AuthType: domain.AuthOAuth,
 		Enabled:  true,
+		// The zero value would silently switch the digest off for every new
+		// account; on is the behaviour every account had before the setting
+		// existed.
+		DigestEnabled: true,
 	}
 	if existing != nil {
 		cur = *existing
@@ -324,6 +338,21 @@ func addOrEditAccount(
 		fmt.Printf("  (clamped to the %s maximum)\n", maxAccountBackfill)
 	}
 
+	// Focus mode. Explained inline because the setting is only useful when
+	// phrased well, and an operator sees this prompt once per account.
+	fmt.Println("  Focus: what you want to hear about from this mailbox, in your own words.")
+	fmt.Println("    Empty = everything is judged on its own merits.")
+	fmt.Println("    Example: only mail addressed to me directly, or tickets and documents")
+	fmt.Println("             where someone mentions me, assigns me or asks for my review")
+	focus := strings.TrimSpace(promptText(sc, "  Focus", cur.Focus))
+	aliases := cur.Aliases
+	if focus != "" {
+		fmt.Println("  Names you are addressed by, comma-separated (first name, Jira handle, @mention).")
+		fmt.Println("    Lets the classifier spot a mention of you inside a notification.")
+		aliases = splitCSV(promptText(sc, "  Aliases", strings.Join(cur.Aliases, ", ")))
+	}
+	digestEnabled := confirm(sc, "  Send a daily digest for this account?", cur.DigestEnabled)
+
 	acc := domain.Account{
 		ID:             email, // identity = email
 		Name:           name,
@@ -337,6 +366,9 @@ func addOrEditAccount(
 		Enabled:        cur.Enabled,
 		DigestTime:     cur.DigestTime,
 		BackfillWindow: backfill,
+		Focus:          focus,
+		Aliases:        aliases,
+		DigestEnabled:  digestEnabled,
 	}
 
 	if acc.Email == "" || acc.Host == "" {
@@ -373,6 +405,18 @@ func addOrEditAccount(
 		}
 	}
 	return nil
+}
+
+// splitCSV parses a comma-separated answer, dropping blanks so a trailing comma
+// cannot yield an empty alias that would match every message.
+func splitCSV(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // oauthClientConfigured reports whether a Google OAuth client (client id +

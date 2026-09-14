@@ -537,6 +537,8 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer, logger log.Logger) []e
 			msg.FromEmail = from.Addr()
 			msg.FromName = from.Name
 		}
+		msg.To = addresses(m.Envelope.To)
+		msg.Cc = addresses(m.Envelope.Cc)
 
 		if headerBytes := m.FindBodySection(extraHeaderSection); len(headerBytes) > 0 {
 			h := parseHeaderBytes(headerBytes)
@@ -547,6 +549,18 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer, logger log.Logger) []e
 		}
 
 		out = append(out, msg)
+	}
+	return out
+}
+
+// addresses renders envelope addresses as lowercased "user@host" strings,
+// dropping group placeholders that carry no mailbox.
+func addresses(addrs []imaplib.Address) []string {
+	var out []string
+	for _, a := range addrs {
+		if addr := a.Addr(); addr != "" && addr != "@" {
+			out = append(out, strings.ToLower(addr))
+		}
 	}
 	return out
 }

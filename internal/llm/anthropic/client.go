@@ -78,7 +78,7 @@ func (c *Client) Classify(ctx context.Context, req llm.ClassifyRequest) (llm.Cla
 		Model:     anthropicsdk.Model(c.model),
 		MaxTokens: maxTokens,
 		System: []anthropicsdk.TextBlockParam{
-			{Text: llm.SystemPrompt(req.IgnoreClauses, req.SummaryLanguage)},
+			{Text: llm.SystemPrompt(req)},
 		},
 		Messages: []anthropicsdk.MessageParam{
 			anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock(llm.FormatUserMessage(req))),

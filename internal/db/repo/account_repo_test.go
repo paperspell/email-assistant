@@ -185,3 +185,28 @@ func TestAccountRepo_UpsertDefaultsAuthType(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.AuthPassword, got.AuthType)
 }
+
+func TestAccountRepo_FocusFieldsRoundTrip(t *testing.T) {
+	r := setupAccountRepo(t)
+	ctx := context.Background()
+
+	a := sampleAccount("work@viber.com")
+	a.Focus = "only mail addressed to me, or tickets and documents that mention me"
+	a.Aliases = []string{"Aliaksei", "aliaksei.novikau", "@anovikau"}
+	a.DigestEnabled = false
+	require.NoError(t, r.Upsert(ctx, a))
+
+	got, err := r.Get(ctx, "work@viber.com")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, a.Focus, got.Focus)
+	assert.Equal(t, []string{"Aliaksei", "aliaksei.novikau", "@anovikau"}, got.Aliases)
+	assert.False(t, got.DigestEnabled)
+}
+
+func TestAccountRepo_AliasesToleratePaddingAndBlanks(t *testing.T) {
+	// The wizard takes aliases as free text; " a, ,b " must not yield an empty
+	// alias, which would match every message.
+	assert.Equal(t, []string{"a", "b"}, splitAliases(" a, ,b "))
+	assert.Nil(t, splitAliases(""))
+}
