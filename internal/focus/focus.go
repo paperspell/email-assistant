@@ -82,12 +82,25 @@ var githubUndirected = map[string]bool{
 	"manual": true, "security_alert": true,
 }
 
+// directAddress are the phrases ticket, document and calendar tools use when
+// a notification is about the recipient specifically — as opposed to the
+// thread they follow. Second person, because the tool is talking to them.
+var directAddress = []string{
+	"mentioned you", "assigned you", "assigned to you", "assigned this to you",
+	"requested your review", "requested a review from you", "asked you",
+	"invited you", "wants you to",
+	"упомянул вас", "упомянула вас", "назначил вам", "назначила вам", "назначил на вас",
+}
+
 // Assess derives what can be known without reading the message as prose.
 func Assess(msg email.Message, owner Owner) Assessment {
 	var a Assessment
 	mentioned := mentionsOwner(msg, owner)
 	if mentioned {
 		a.Facts = append(a.Facts, "owner is mentioned by name or handle in the subject or body")
+	} else if phrase := addressedInSecondPerson(msg); phrase != "" {
+		mentioned = true
+		a.Facts = append(a.Facts, fmt.Sprintf("the notification addresses the owner directly (%q)", phrase))
 	}
 
 	n := msg.Notification
@@ -132,17 +145,30 @@ func Assess(msg email.Message, owner Owner) Assessment {
 	}
 	if n.Automated {
 		a.Facts = append(a.Facts, "automated notification (Auto-Submitted)")
-		return a
 	}
-	// A person's mail with the owner in To is addressed to them; in Cc it is
-	// not settled either way.
-	if owner.Email != "" && containsFold(msg.To, owner.Email) {
+	// Where the owner's address sits is a fact for the classifier, not a
+	// verdict: a SaaS digest is addressed to the owner personally too. Only the
+	// classifier, reading the mail, can tell a person writing from a service
+	// sending — which the focus text asks it to do.
+	switch {
+	case owner.Email != "" && containsFold(msg.To, owner.Email):
 		a.Facts = append(a.Facts, "owner's address is in To")
-		a.Verdict = Directed
-	} else if owner.Email != "" && containsFold(msg.Cc, owner.Email) {
+	case owner.Email != "" && containsFold(msg.Cc, owner.Email):
 		a.Facts = append(a.Facts, "owner's address is only in Cc")
 	}
 	return a
+}
+
+// addressedInSecondPerson returns the direct-address phrase found in the
+// subject or body, or "".
+func addressedInSecondPerson(msg email.Message) string {
+	text := strings.ToLower(msg.Subject + "\n" + msg.Body)
+	for _, p := range directAddress {
+		if strings.Contains(text, p) {
+			return p
+		}
+	}
+	return ""
 }
 
 // commentVerdict settles a comment on a thread the owner takes part in. A

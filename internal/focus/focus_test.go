@@ -96,21 +96,30 @@ func TestAssess_RealNotifications(t *testing.T) {
 			want: NotDirected, fact: "automation account",
 		},
 		{
-			name: "Confluence mention — no reason header, the body names me",
+			name: "Confluence mention — the body says \"mentioned you\", not my name",
 			msg: email.Message{
 				Subject: "Remember to respond - these teammates mentioned you",
 				To:      []string{"aliaksei.novikau@viber.com"},
-				Body:    "Pavlo Yeremenko mentioned Aliaksei Novikau in a comment on 'Ad Quality UI'",
+				Body:    "Pavlo Yeremenko mentioned you in a comment on 'Ad Quality UI'",
 			},
-			want: Directed, fact: "mentioned by name or handle",
+			want: Directed, fact: "addresses the owner directly",
 		},
 		{
-			name: "a person writes to me directly",
+			name: "a person writes to me directly — a fact for the classifier, not a verdict",
 			msg: email.Message{
 				Subject: "Quick question", FromEmail: "colleague@viber.com",
 				To: []string{"aliaksei.novikau@viber.com"},
 			},
-			want: Directed, fact: "owner's address is in To",
+			want: Unknown, fact: "owner's address is in To",
+		},
+		{
+			name: "SaaS digest addressed to me personally is not a person writing",
+			msg: email.Message{
+				Subject: "Your Daily Digest from Datadog", FromEmail: "no-reply@datadoghq.com",
+				To:              []string{"aliaksei.novikau@viber.com"},
+				ListUnsubscribe: "<https://datadoghq.com/unsub>",
+			},
+			want: Unknown, fact: "owner's address is in To",
 		},
 		{
 			name: "a person copies me on a thread — not settled",
@@ -121,12 +130,22 @@ func TestAssess_RealNotifications(t *testing.T) {
 			want: Unknown, fact: "only in Cc",
 		},
 		{
-			name: "Datadog daily digest — automated, nobody addressed",
+			name: "Jira issue update — automated, nobody addressed",
 			msg: email.Message{
-				Subject: "Your Daily Digest from Datadog", To: []string{"aliaksei.novikau@viber.com"},
+				Subject: "[JIRA] (BUS-28132) Update helm charts versions", To: []string{"aliaksei.novikau@viber.com"},
+				Body:         "Andrei changed the status to In Progress.",
 				Notification: email.Notification{Automated: true},
 			},
 			want: Unknown, fact: "automated notification",
+		},
+		{
+			name: "Jira assignment — the tool says so in the second person",
+			msg: email.Message{
+				Subject: "[JIRA] (BUS-28200) Floor agent rollout", To: []string{"aliaksei.novikau@viber.com"},
+				Body:         "Andrei Romanchik assigned this to you.",
+				Notification: email.Notification{Automated: true},
+			},
+			want: Directed, fact: "assigned this to you",
 		},
 	}
 	for _, tt := range tests {
