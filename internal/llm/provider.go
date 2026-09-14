@@ -35,6 +35,10 @@ type ClassifyRequest struct {
 	// from this mailbox. When set, mail outside it is classified as ignore
 	// whatever its content would otherwise merit.
 	Focus string
+	// FocusFacts are what the headers established about this message —
+	// "GitHub reason: review_requested", "comment by a person" — stated so
+	// the model judges from facts rather than inferring them from prose.
+	FocusFacts []string
 }
 
 // Owner is the mailbox owner as the classifier should know them.
@@ -183,6 +187,9 @@ func FormatUserMessage(req ClassifyRequest) string {
 		}
 	}
 	fmt.Fprintf(&b, "Subject: %s\n", req.Subject)
+	if len(req.FocusFacts) > 0 {
+		fmt.Fprintf(&b, "Established facts: %s\n", strings.Join(req.FocusFacts, "; "))
+	}
 	fmt.Fprintf(&b, "Language: %s\n", req.Language)
 	fmt.Fprintf(&b, "Is reply: %s\n", yesNo(req.IsReply))
 	fmt.Fprintf(&b, "Has unsubscribe header: %s\n", yesNo(req.HasListUnsubscribe))

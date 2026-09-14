@@ -216,6 +216,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			SummaryLanguage:     i18n.LanguageName(locale),
 			Focus:               acc.Focus,
 			Aliases:             acc.Aliases,
+			BotHandles:          acc.BotHandles,
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
 			Notifier:            bot,

@@ -24,6 +24,30 @@ type Message struct {
 	ListID          string // List-Id header; used by list_id filter rules
 	// Body contains the plain-text body; empty when not fetched (FetchBody=false).
 	Body string
+	// Notification describes the machine-generated notification this message
+	// is, when it is one — the tool that sent it and why it reached the owner.
+	Notification Notification
+}
+
+// Notification is what a ticket, code-review or document tool says about why
+// it sent a message. Tools put this in headers the classifier never saw, and
+// it is the difference between "a person asked for my review" and "a commit
+// was pushed to a merge request I am subscribed to".
+type Notification struct {
+	// Platform is "github", "gitlab", or "" for anything else.
+	Platform string
+	// Reason is why the owner received it. GitHub states it outright in
+	// X-GitHub-Reason (mention, review_requested, assign, subscribed, …).
+	// GitLab does not: a message with a discussion id is a "comment", one
+	// without is "activity" — a push, approval, merge or resolved thread,
+	// which is never a person addressing the owner.
+	Reason string
+	// Sender is the acting user's handle, e.g. "aicode", when the tool names
+	// one. Automated reviewers are users too, and this is how they show.
+	Sender string
+	// Automated is set for any message marked Auto-Submitted: auto-generated,
+	// whether or not the tool is recognised.
+	Automated bool
 }
 
 // Provider is the interface that all email backend implementations must satisfy.

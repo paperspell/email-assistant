@@ -194,6 +194,7 @@ func TestAccountRepo_FocusFieldsRoundTrip(t *testing.T) {
 	a.Focus = "only mail addressed to me, or tickets and documents that mention me"
 	a.Aliases = []string{"Aliaksei", "aliaksei.novikau", "@anovikau"}
 	a.DigestEnabled = false
+	a.BotHandles = []string{"aicode", "renovate"}
 	require.NoError(t, r.Upsert(ctx, a))
 
 	got, err := r.Get(ctx, "work@viber.com")
@@ -202,6 +203,7 @@ func TestAccountRepo_FocusFieldsRoundTrip(t *testing.T) {
 	assert.Equal(t, a.Focus, got.Focus)
 	assert.Equal(t, []string{"Aliaksei", "aliaksei.novikau", "@anovikau"}, got.Aliases)
 	assert.False(t, got.DigestEnabled)
+	assert.Equal(t, []string{"aicode", "renovate"}, got.BotHandles)
 }
 
 func TestAccountRepo_AliasesToleratePaddingAndBlanks(t *testing.T) {

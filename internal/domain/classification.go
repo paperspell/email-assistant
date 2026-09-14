@@ -37,6 +37,9 @@ const (
 const (
 	SourceRuleBased = "rule_based"
 	SourceLLM       = "llm" // prefix; full value is "llm:{provider}"
+	// SourceFocus marks a decision settled from headers alone by focus.Assess,
+	// without consulting the classifier.
+	SourceFocus = "focus"
 )
 
 // Classification holds the result of classifying a single email.

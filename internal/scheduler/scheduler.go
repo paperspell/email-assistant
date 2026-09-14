@@ -15,6 +15,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/features"
 	"github.com/paperspell/email-assistant/internal/filter"
+	"github.com/paperspell/email-assistant/internal/focus"
 	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/importance"
 	"github.com/paperspell/email-assistant/internal/llm"
@@ -47,6 +48,7 @@ type Config struct {
 	// owner is addressed. Empty Focus leaves classification as it was.
 	Focus               string
 	Aliases             []string
+	BotHandles          []string
 	ScoreDivergenceWarn int
 	Provider            email.Provider
 	Notifier            telegram.Notifier
@@ -395,11 +397,35 @@ func (s *Scheduler) processMessage(
 			"reason", strings.Join(ruleClass.Reason, "; "))
 	}
 
+	// 2b. Focus: what the headers settle, the classifier is not asked about.
+	// A push to a merge request or a bot's comment is out of a focused
+	// mailbox's scope by construction, and saying so here — with the fact
+	// that decided it — is both cheaper and more auditable than a summary.
+	var focusFacts []string
+	if s.cfg.Focus != "" {
+		assessment := focus.Assess(msg, focus.Owner{
+			Email: s.cfg.AccountEmail, Aliases: s.cfg.Aliases, Bots: s.cfg.BotHandles,
+		})
+		focusFacts = assessment.Facts
+		if assessment.Verdict == focus.NotDirected {
+			why := "out of focus: " + strings.Join(assessment.Facts, "; ")
+			if err := s.cfg.ClassificationRepo.Save(ctx, domain.Classification{
+				ID: idx.GenerateID(), EmailID: e.ID, Level: domain.LevelIgnore,
+				Category: domain.CategoryOther, Score: 0, Reason: []string{why},
+				Source: domain.SourceFocus, ClassifiedAt: timex.NowUTC(),
+			}); err != nil {
+				return err
+			}
+			return s.ignoreEmail(ctx, e, msg, "focus", "reason", why)
+		}
+	}
+
 	// 3. LLM classification (optional — non-fatal on error), with per-account ignore clauses.
 	classification := ruleClass
 	llmDecided := false
 	if s.cfg.LLMProvider != nil {
 		req := s.applyFocus(buildLLMRequest(msg, lang, s.cfg.ContentMode))
+		req.FocusFacts = focusFacts
 		req.IgnoreClauses = clauseTexts
 		req.SummaryLanguage = s.cfg.SummaryLanguage
 		llmResult, llmErr := s.cfg.LLMProvider.Classify(ctx, req)

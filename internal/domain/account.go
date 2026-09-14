@@ -41,6 +41,11 @@ type Account struct {
 	// name, a Jira handle, an @mention — so the classifier can recognise a
 	// mention of the owner inside a notification that is not addressed to them.
 	Aliases []string
+	// BotHandles names automation accounts — an AI code reviewer, a
+	// dependency updater — whose comments on the owner's threads are noise,
+	// where a person's would be wanted. GitHub Apps ("[bot]" suffix) are
+	// recognised without being listed; GitLab bots must be.
+	BotHandles []string
 	// DigestEnabled controls whether this account sends a daily digest. In a
 	// focused mailbox the digest would list exactly the mail the owner asked
 	// not to see, so it is usually turned off there.
