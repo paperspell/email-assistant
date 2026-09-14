@@ -79,6 +79,16 @@ func TestAssess_RealNotifications(t *testing.T) {
 			want: Directed, fact: "review_requested",
 		},
 		{
+			name: "GitHub follow-up in a thread I was asked to review keeps the reason but is not the request",
+			msg: email.Message{
+				Subject:   "Re: [rakuten-viber-ads/rssp.gitops] Release VX Engine v0.156.1 (PR #660)",
+				InReplyTo: "<rakuten-viber-ads/rssp.gitops/pull/660@github.com>",
+				Notification: email.Notification{
+					Platform: "github", Reason: "review_requested", Sender: "eliyahu-shvalb_rakuten", Automated: true},
+			},
+			want: Unknown, fact: "follow-up in a thread",
+		},
+		{
 			name: "GitHub subscribed thread I merely watch",
 			msg: email.Message{
 				Subject:      "[org/repo] Bump deps (PR #12)",

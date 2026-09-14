@@ -111,7 +111,15 @@ func Assess(msg email.Message, owner Owner) Assessment {
 			a.Facts = append(a.Facts, "acting user: "+n.Sender)
 		}
 		switch {
-		case githubDirected[n.Reason] || mentioned:
+		case mentioned:
+			a.Verdict = Directed
+		case n.Reason == "review_requested" && msg.InReplyTo != "":
+			// GitHub keeps this reason on every later message in a thread the
+			// owner was asked to review. The request itself is the first
+			// message; the rest are activity on that pull request, for the
+			// classifier to weigh.
+			a.Facts = append(a.Facts, "follow-up in a thread the owner was asked to review")
+		case githubDirected[n.Reason]:
 			a.Verdict = Directed
 		case githubComments[n.Reason]:
 			a.Verdict = commentVerdict(&a, n.Sender, owner)
