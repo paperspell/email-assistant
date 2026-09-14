@@ -2,6 +2,7 @@ package imap
 
 import (
 	"errors"
+	"net/textproto"
 	"testing"
 	"unicode/utf8"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
+	"github.com/paperspell/email-assistant/internal/email"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 )
 
@@ -89,4 +91,62 @@ func TestParseHeaderBytes(t *testing.T) {
 func TestParseHeaderBytes_Empty(t *testing.T) {
 	h := parseHeaderBytes(nil)
 	assert.Empty(t, h.Get("In-Reply-To"))
+}
+
+// Header sets copied from real notifications in a work mailbox, so the parser
+// is tested against what the tools actually send rather than their docs —
+// this GitLab, for one, sends no X-GitLab-NotificationReason at all.
+func TestParseNotification_RealHeaders(t *testing.T) {
+	hdr := func(pairs ...string) textproto.MIMEHeader {
+		h := textproto.MIMEHeader{}
+		for i := 0; i+1 < len(pairs); i += 2 {
+			h.Set(pairs[i], pairs[i+1])
+		}
+		return h
+	}
+	tests := []struct {
+		name     string
+		h        textproto.MIMEHeader
+		fromName string
+		want     email.Notification
+	}{
+		{
+			name: "gitlab comment by the automated reviewer",
+			h: hdr("Auto-Submitted", "auto-generated", "X-GitLab-Project", "gam-cli",
+				"X-GitLab-Discussion-ID", "1f6a0cb62478e8e1db57fc9b685c7f331ac72e64"),
+			fromName: "The Commenter (@aicode)",
+			want:     email.Notification{Platform: "gitlab", Reason: "comment", Sender: "aicode", Automated: true},
+		},
+		{
+			name:     "gitlab push has no discussion, so it is activity",
+			h:        hdr("Auto-Submitted", "auto-generated", "X-GitLab-Project", "rssp"),
+			fromName: "Eliyahu Shvalb (@eliyahu.shvalb)",
+			want:     email.Notification{Platform: "gitlab", Reason: "activity", Sender: "eliyahu.shvalb", Automated: true},
+		},
+		{
+			name: "github review request",
+			h: hdr("Precedence", "list", "X-GitHub-Reason", "review_requested",
+				"X-GitHub-Sender", "eliyahu-shvalb_rakuten"),
+			fromName: "Shvalb, Eliyahu",
+			want: email.Notification{
+				Platform: "github", Reason: "review_requested", Sender: "eliyahu-shvalb_rakuten", Automated: true},
+		},
+		{
+			name:     "confluence carries no reason header",
+			h:        hdr("X-Atlassian-Mail-Message-Id", "<x@rakuten-viber.atlassian.net>"),
+			fromName: "Confluence",
+			want:     email.Notification{},
+		},
+		{
+			name:     "a person's mail is not a notification",
+			h:        hdr("In-Reply-To", "<abc@example.com>"),
+			fromName: "Alice",
+			want:     email.Notification{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, parseNotification(tt.h, tt.fromName))
+		})
+	}
 }

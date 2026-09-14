@@ -24,7 +24,7 @@ func NewAccountRepo(db *sql.DB) *AccountRepo {
 const accountColumns = `id, name, email, imap_host, imap_port, imap_username,
 	imap_password, tls, poll_interval, auth_type, enabled,
 	oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window,
-	focus, aliases, digest_enabled`
+	focus, aliases, digest_enabled, bot_handles`
 
 // List returns all accounts ordered by creation time.
 func (r *AccountRepo) List(ctx context.Context) ([]domain.Account, error) {
@@ -61,8 +61,8 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 			(id, name, email, imap_host, imap_port, imap_username,
 			 imap_password, tls, poll_interval, auth_type, enabled,
 			 oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window,
-			 focus, aliases, digest_enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 focus, aliases, digest_enabled, bot_handles)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name          = excluded.name,
 			email         = excluded.email,
@@ -81,14 +81,15 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 			backfill_window     = excluded.backfill_window,
 			focus               = excluded.focus,
 			aliases             = excluded.aliases,
-			digest_enabled      = excluded.digest_enabled
+			digest_enabled      = excluded.digest_enabled,
+			bot_handles         = excluded.bot_handles
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		a.ID, a.Name, a.Email, a.Host, a.Port, a.Username,
 		a.Password, boolToInt(a.TLS), a.PollInterval.String(), a.AuthType, boolToInt(a.Enabled),
 		a.OAuthRefreshToken, a.OAuthAccessToken, nullableTime(a.OAuthTokenExpiry), a.DigestTime,
 		a.BackfillWindow.String(),
-		a.Focus, strings.Join(a.Aliases, ","), boolToInt(a.DigestEnabled),
+		a.Focus, strings.Join(a.Aliases, ","), boolToInt(a.DigestEnabled), strings.Join(a.BotHandles, ","),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert account: %w", err)
@@ -180,20 +181,21 @@ type rowScanner interface {
 
 func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 	var (
-		a                             domain.Account
-		tls, enabled, digestEnabled   int
-		pollStr, backfillStr, aliases string
-		expiry                        sql.NullString
+		a                                   domain.Account
+		tls, enabled, digestEnabled         int
+		pollStr, backfillStr, aliases, bots string
+		expiry                              sql.NullString
 	)
 	if err := s.Scan(
 		&a.ID, &a.Name, &a.Email, &a.Host, &a.Port, &a.Username,
 		&a.Password, &tls, &pollStr, &a.AuthType, &enabled,
 		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry, &a.DigestTime, &backfillStr,
-		&a.Focus, &aliases, &digestEnabled,
+		&a.Focus, &aliases, &digestEnabled, &bots,
 	); err != nil {
 		return nil, err
 	}
 	a.Aliases = splitAliases(aliases)
+	a.BotHandles = splitAliases(bots)
 	a.DigestEnabled = digestEnabled != 0
 
 	d, err := time.ParseDuration(pollStr)

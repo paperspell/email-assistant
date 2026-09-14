@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +30,11 @@ import (
 const maxBodyLen = 3000
 
 // extraHeaders lists the additional header fields fetched alongside ENVELOPE.
-var extraHeaders = []string{"In-Reply-To", "List-Unsubscribe", "Precedence", "List-Id"}
+var extraHeaders = []string{
+	"In-Reply-To", "List-Unsubscribe", "Precedence", "List-Id",
+	// Why a tool notification reached the owner; see email.Notification.
+	"Auto-Submitted", "X-GitHub-Reason", "X-GitHub-Sender", "X-GitLab-Discussion-ID", "X-GitLab-Project",
+}
 
 // Peek avoids setting the \Seen flag; a BODY[HEADER.FIELDS] fetch without it
 // implicitly marks the message as read (RFC 3501 §6.4.5).
@@ -546,11 +551,42 @@ func parseMessages(msgs []*imapclient.FetchMessageBuffer, logger log.Logger) []e
 			msg.ListUnsubscribe = h.Get("List-Unsubscribe")
 			msg.Precedence = h.Get("Precedence")
 			msg.ListID = h.Get("List-Id")
+			msg.Notification = parseNotification(h, msg.FromName)
 		}
 
 		out = append(out, msg)
 	}
 	return out
+}
+
+// gitlabHandle matches the "(@handle)" GitLab appends to the acting user's
+// display name in From.
+var gitlabHandle = regexp.MustCompile(`\(@([A-Za-z0-9._-]+)\)`)
+
+// parseNotification reads what a tool says about a message it generated.
+func parseNotification(h textproto.MIMEHeader, fromName string) email.Notification {
+	n := email.Notification{
+		Automated: strings.EqualFold(strings.TrimSpace(h.Get("Auto-Submitted")), "auto-generated"),
+	}
+	switch {
+	case h.Get("X-GitHub-Reason") != "":
+		n.Platform = "github"
+		n.Reason = strings.ToLower(strings.TrimSpace(h.Get("X-GitHub-Reason")))
+		n.Sender = strings.TrimSpace(h.Get("X-GitHub-Sender"))
+		n.Automated = true
+	case h.Get("X-GitLab-Project") != "":
+		n.Platform = "gitlab"
+		if h.Get("X-GitLab-Discussion-ID") != "" {
+			n.Reason = "comment"
+		} else {
+			n.Reason = "activity"
+		}
+		if m := gitlabHandle.FindStringSubmatch(fromName); m != nil {
+			n.Sender = m[1]
+		}
+		n.Automated = true
+	}
+	return n
 }
 
 // addresses renders envelope addresses as lowercased "user@host" strings,

@@ -345,11 +345,15 @@ func addOrEditAccount(
 	fmt.Println("    Example: only mail addressed to me directly, or tickets and documents")
 	fmt.Println("             where someone mentions me, assigns me or asks for my review")
 	focus := strings.TrimSpace(promptText(sc, "  Focus", cur.Focus))
-	aliases := cur.Aliases
+	aliases, bots := cur.Aliases, cur.BotHandles
 	if focus != "" {
 		fmt.Println("  Names you are addressed by, comma-separated (first name, Jira handle, @mention).")
 		fmt.Println("    Lets the classifier spot a mention of you inside a notification.")
 		aliases = splitCSV(promptText(sc, "  Aliases", strings.Join(cur.Aliases, ", ")))
+		fmt.Println("  Automation accounts, comma-separated (an AI code reviewer, a dependency bot).")
+		fmt.Println("    Their comments on your threads are dropped; a person's are delivered.")
+		fmt.Println("    GitHub Apps ending in [bot] are recognised without being listed.")
+		bots = splitCSV(promptText(sc, "  Bot handles", strings.Join(cur.BotHandles, ", ")))
 	}
 	digestEnabled := confirm(sc, "  Send a daily digest for this account?", cur.DigestEnabled)
 
@@ -368,6 +372,7 @@ func addOrEditAccount(
 		BackfillWindow: backfill,
 		Focus:          focus,
 		Aliases:        aliases,
+		BotHandles:     bots,
 		DigestEnabled:  digestEnabled,
 	}
 
