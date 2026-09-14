@@ -97,7 +97,7 @@ type generateResponse struct {
 func (c *Client) Classify(ctx context.Context, req llm.ClassifyRequest) (llm.ClassifyResult, error) {
 	body, err := json.Marshal(generateRequest{
 		SystemInstruction: &content{
-			Parts: []part{{Text: llm.SystemPrompt(req.IgnoreClauses, req.SummaryLanguage)}},
+			Parts: []part{{Text: llm.SystemPrompt(req)}},
 		},
 		Contents: []content{{
 			Role:  "user",

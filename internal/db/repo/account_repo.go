@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/paperspell/email-assistant/internal/domain"
@@ -22,7 +23,8 @@ func NewAccountRepo(db *sql.DB) *AccountRepo {
 
 const accountColumns = `id, name, email, imap_host, imap_port, imap_username,
 	imap_password, tls, poll_interval, auth_type, enabled,
-	oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window`
+	oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window,
+	focus, aliases, digest_enabled`
 
 // List returns all accounts ordered by creation time.
 func (r *AccountRepo) List(ctx context.Context) ([]domain.Account, error) {
@@ -58,8 +60,9 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 		INSERT INTO accounts
 			(id, name, email, imap_host, imap_port, imap_username,
 			 imap_password, tls, poll_interval, auth_type, enabled,
-			 oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 oauth_refresh_token, oauth_access_token, oauth_token_expiry, digest_time, backfill_window,
+			 focus, aliases, digest_enabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name          = excluded.name,
 			email         = excluded.email,
@@ -75,13 +78,17 @@ func (r *AccountRepo) Upsert(ctx context.Context, a domain.Account) error {
 			oauth_access_token  = excluded.oauth_access_token,
 			oauth_token_expiry  = excluded.oauth_token_expiry,
 			digest_time         = excluded.digest_time,
-			backfill_window     = excluded.backfill_window
+			backfill_window     = excluded.backfill_window,
+			focus               = excluded.focus,
+			aliases             = excluded.aliases,
+			digest_enabled      = excluded.digest_enabled
 	`
 	_, err := r.db.ExecContext(ctx, q,
 		a.ID, a.Name, a.Email, a.Host, a.Port, a.Username,
 		a.Password, boolToInt(a.TLS), a.PollInterval.String(), a.AuthType, boolToInt(a.Enabled),
 		a.OAuthRefreshToken, a.OAuthAccessToken, nullableTime(a.OAuthTokenExpiry), a.DigestTime,
 		a.BackfillWindow.String(),
+		a.Focus, strings.Join(a.Aliases, ","), boolToInt(a.DigestEnabled),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert account: %w", err)
@@ -155,6 +162,17 @@ func (r *AccountRepo) query(ctx context.Context, q string, args ...any) ([]domai
 	return accounts, nil
 }
 
+// splitAliases parses the comma-separated aliases column, dropping blanks.
+func splitAliases(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -162,19 +180,21 @@ type rowScanner interface {
 
 func (r *AccountRepo) scan(s rowScanner) (*domain.Account, error) {
 	var (
-		a            domain.Account
-		tls, enabled int
-		pollStr      string
-		backfillStr  string
-		expiry       sql.NullString
+		a                             domain.Account
+		tls, enabled, digestEnabled   int
+		pollStr, backfillStr, aliases string
+		expiry                        sql.NullString
 	)
 	if err := s.Scan(
 		&a.ID, &a.Name, &a.Email, &a.Host, &a.Port, &a.Username,
 		&a.Password, &tls, &pollStr, &a.AuthType, &enabled,
 		&a.OAuthRefreshToken, &a.OAuthAccessToken, &expiry, &a.DigestTime, &backfillStr,
+		&a.Focus, &aliases, &digestEnabled,
 	); err != nil {
 		return nil, err
 	}
+	a.Aliases = splitAliases(aliases)
+	a.DigestEnabled = digestEnabled != 0
 
 	d, err := time.ParseDuration(pollStr)
 	if err != nil {

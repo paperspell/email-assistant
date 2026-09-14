@@ -176,23 +176,29 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		mailboxes[acc.ID] = provider
 		accountInfos[acc.ID] = telegram.AccountInfo{Name: acc.Name, Email: acc.Email}
 
-		digestTime := acc.DigestTime
-		if digestTime == "" {
-			digestTime = cfg.Digest.Time
+		if acc.DigestEnabled {
+			digestTime := acc.DigestTime
+			if digestTime == "" {
+				digestTime = cfg.Digest.Time
+			}
+			digestSched := digest.New(digest.Config{
+				AccountID:    acc.ID,
+				AccountEmail: acc.Email,
+				Time:         digestTime,
+				Location:     cfg.Digest.Location,
+				EmailRepo:    emailRepo,
+				ClassRepo:    classificationRepo,
+				DigestRepo:   digestRepo,
+				Sender:       bot,
+				Printer:      printer,
+				Logger:       logger.With("component", "digest", "account", acc.Email),
+			})
+			g.Go(func() error { return digestSched.Start(gCtx) })
+		} else {
+			// Said out loud at startup: a digest that never arrives is otherwise
+			// indistinguishable from one that failed to send.
+			logger.Info("digest disabled for account", "account", acc.Email)
 		}
-		digestSched := digest.New(digest.Config{
-			AccountID:    acc.ID,
-			AccountEmail: acc.Email,
-			Time:         digestTime,
-			Location:     cfg.Digest.Location,
-			EmailRepo:    emailRepo,
-			ClassRepo:    classificationRepo,
-			DigestRepo:   digestRepo,
-			Sender:       bot,
-			Printer:      printer,
-			Logger:       logger.With("component", "digest", "account", acc.Email),
-		})
-		g.Go(func() error { return digestSched.Start(gCtx) })
 
 		sched := scheduler.New(scheduler.Config{
 			AccountID:           acc.ID,
@@ -208,6 +214,8 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			LLMProvider:         llmProvider,
 			ContentMode:         cfg.Content.Mode,
 			SummaryLanguage:     i18n.LanguageName(locale),
+			Focus:               acc.Focus,
+			Aliases:             acc.Aliases,
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
 			Notifier:            bot,
