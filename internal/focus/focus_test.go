@@ -89,6 +89,27 @@ func TestAssess_RealNotifications(t *testing.T) {
 			want: Unknown, fact: "follow-up in a thread",
 		},
 		{
+			name: "my own push, echoed back by GitLab — my name is all over it, nobody addressed me",
+			msg: email.Message{
+				Subject: "rssp | Fixed pipeline for BUS-28097-floor-agent-metrics",
+				To:      []string{"aliaksei.novikau@viber.com"},
+				Body:    "Aliaksei Novikau pushed to branch BUS-28097-floor-agent-metrics; pipeline fixed.",
+				Notification: email.Notification{
+					Platform: "gitlab", Reason: "activity", Sender: "aliaksei.novikau", Automated: true},
+			},
+			want: NotDirected, fact: "own activity",
+		},
+		{
+			name: "my own comment on a thread, echoed back — not a person writing to me",
+			msg: email.Message{
+				Subject: "Re: rssp | BUS-29301: Remove Viber schain node",
+				Body:    "Aliaksei Novikau commented: looks good, merging.",
+				Notification: email.Notification{
+					Platform: "gitlab", Reason: "comment", Sender: "aliaksei.novikau", Automated: true},
+			},
+			want: NotDirected, fact: "own activity",
+		},
+		{
 			name: "GitHub subscribed thread I merely watch",
 			msg: email.Message{
 				Subject:      "[org/repo] Bump deps (PR #12)",
