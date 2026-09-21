@@ -47,6 +47,24 @@ type Owner struct {
 	Bots []string
 }
 
+// isSelf reports whether a handle is the owner's own — one of their aliases,
+// or the local part of their address, which is what most tools use.
+func (o Owner) isSelf(handle string) bool {
+	h := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(handle), "@"))
+	if h == "" {
+		return false
+	}
+	if at := strings.Index(o.Email, "@"); at > 0 && strings.EqualFold(o.Email[:at], h) {
+		return true
+	}
+	for _, a := range o.Aliases {
+		if strings.ToLower(strings.TrimPrefix(strings.TrimSpace(a), "@")) == h {
+			return true
+		}
+	}
+	return false
+}
+
 // isBot reports whether a handle belongs to automation.
 func (o Owner) isBot(handle string) bool {
 	h := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(handle), "@"))
@@ -104,6 +122,14 @@ func Assess(msg email.Message, owner Owner) Assessment {
 	}
 
 	n := msg.Notification
+	// A tool echoing the owner's own action back to them — their push, their
+	// comment, their approval — is never someone addressing them, however
+	// often their name appears in it.
+	if (n.Platform == "github" || n.Platform == "gitlab") && owner.isSelf(n.Sender) {
+		a.Facts = append(a.Facts, "the owner's own activity, echoed by "+n.Platform)
+		a.Verdict = NotDirected
+		return a
+	}
 	switch n.Platform {
 	case "github":
 		a.Facts = append(a.Facts, "GitHub notification, reason: "+n.Reason)
