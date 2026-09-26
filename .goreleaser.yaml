@@ -1,0 +1,47 @@
+# goreleaser v2 — https://goreleaser.com
+# A tag `vX.Y.Z` pushed to GitHub builds static binaries for every platform a
+# self-hoster is likely to run and attaches them to a GitHub Release, so
+# installing no longer requires a Go toolchain.
+version: 2
+project_name: email-agent
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: email-agent
+    main: ./cmd/email-agent
+    binary: email-agent
+    env:
+      # SQLite here is pure Go (wasm), so the binary needs no C toolchain and
+      # runs on any glibc or musl host as-is.
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # timetzdata embeds the zone database: the digest schedules in the
+    # account's timezone, and a minimal host (or distroless image) has none.
+    tags: [timetzdata]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^chore"
+      - "^ci"
+      - "^test"
