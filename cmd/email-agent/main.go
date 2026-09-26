@@ -249,10 +249,11 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	}
 
 	poller := &telegram.Poller{
-		Bot:          bot,
-		Handler:      handler,
-		SettingsRepo: settingsRepo,
-		Logger:       logger.With("component", "telegram_poller"),
+		Bot:           bot,
+		Handler:       handler,
+		SettingsRepo:  settingsRepo,
+		Logger:        logger.With("component", "telegram_poller"),
+		AllowedChatID: cfg.Telegram.ChatID,
 	}
 
 	g.Go(func() error { return poller.Run(gCtx) })
