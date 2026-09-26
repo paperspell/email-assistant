@@ -76,3 +76,7 @@ make check          # lint + test + migrations
 ```
 
 See [AGENTS.md](AGENTS.md) for architecture overview and documentation index.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
