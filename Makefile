@@ -1,13 +1,18 @@
 GONOSUMDB=github.com/paperspell
 GOLANGCI_LINT_VERSION=v2.10.1
 BINARY=bin/email-agent
+# The version baked into the binary: the nearest tag, or the commit when
+# untagged, with -dirty for uncommitted changes. goreleaser sets the same
+# variable from the release tag.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .DEFAULT_GOAL := help
 
 check: tidy lint-fix test test-migrations ## Run all local checks: tidy, lint, unit tests, migration tests.
 
 build: ## Build the binary.
-	go build -o $(BINARY) -trimpath ./cmd/email-agent
+	go build -o $(BINARY) -trimpath -ldflags "$(LDFLAGS)" ./cmd/email-agent
 
 run: build ## Build and run the daemon (requires config.yaml).
 	$(BINARY) run

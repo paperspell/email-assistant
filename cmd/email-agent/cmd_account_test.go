@@ -71,3 +71,41 @@ func TestPromptDuration_InvalidInputReportsLabel(t *testing.T) {
 	assert.Contains(t, err.Error(), "backfill")
 	assert.Contains(t, err.Error(), `"48 hours"`)
 }
+
+func TestKnownProvider(t *testing.T) {
+	tests := []struct {
+		email    string
+		wantHost string
+		wantOK   bool
+	}{
+		{"friend@gmail.com", "imap.gmail.com", true},
+		{"Friend@GMAIL.com", "imap.gmail.com", true}, // domain is case-insensitive
+		{"x@googlemail.com", "imap.gmail.com", true},
+		{"x@outlook.com", "outlook.office365.com", true},
+		{"x@icloud.com", "imap.mail.me.com", true},
+		{"x@yandex.ru", "imap.yandex.ru", true},
+		{"x@fastmail.com", "imap.fastmail.com", true},
+		{"contact@paperspell.space", "", false}, // Workspace on a custom domain: ask
+		{"contact@ppspell.com", "", false},      // hosting provider: ask
+		{"not-an-address", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.email, func(t *testing.T) {
+			got, ok := knownProvider(tt.email)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.wantHost, got.host)
+			if ok {
+				assert.Equal(t, 993, got.port, "every preset is implicit TLS on 993")
+			}
+		})
+	}
+}
+
+func TestKnownProvider_GmailSaysAppPassword(t *testing.T) {
+	// The account password never works for Gmail IMAP; the wizard must say so
+	// before the user types it and gets an opaque login failure.
+	got, ok := knownProvider("a@gmail.com")
+	require.True(t, ok)
+	assert.Contains(t, got.hint, "app password")
+	assert.Contains(t, got.hint, "apppasswords")
+}

@@ -255,9 +255,10 @@ func addOrEditAccount(
 		Port:         993,
 		TLS:          true,
 		PollInterval: defaultPollInterval(ctx, sr),
-		// Gmail over OAuth is the common case, so new accounts default to it and
-		// the user can just press Enter.
-		AuthType: domain.AuthOAuth,
+		// A password is the default: with an app password Gmail needs no Google
+		// Cloud project, no consent screen and no weekly re-authorisation. OAuth
+		// stays for Workspace domains where an admin has switched passwords off.
+		AuthType: domain.AuthPassword,
 		Enabled:  true,
 		// The zero value would silently switch the digest off for every new
 		// account; on is the behaviour every account had before the setting
@@ -297,6 +298,15 @@ func addOrEditAccount(
 		}
 		if username == "" {
 			username = email
+		}
+	} else if preset, ok := knownProvider(email); ok && host == "" {
+		// A provider with well-known IMAP settings: a new account needs only the
+		// address and the password. Everything set here stays editable later
+		// through `account edit`, which asks the full set for an existing host.
+		host, port, tls, username = preset.host, preset.port, true, email
+		fmt.Printf("  %s detected: %s:%d, TLS\n", preset.name, host, port)
+		if preset.hint != "" {
+			fmt.Println("  " + preset.hint)
 		}
 	} else {
 		// Password IMAP (any provider): ask the connection details.
@@ -410,6 +420,47 @@ func addOrEditAccount(
 		}
 	}
 	return nil
+}
+
+// providerPreset is the IMAP endpoint of a mail provider whose settings every
+// client hard-codes, so a newcomer is not asked for them.
+type providerPreset struct {
+	name string
+	host string
+	port int
+	// hint tells the user what kind of password the provider expects, where
+	// the account password will not work.
+	hint string
+}
+
+const gmailHint = "Gmail needs an app password (2-Step Verification must be on): " +
+	"https://myaccount.google.com/apppasswords"
+
+// knownProviders maps address domains onto presets. Only providers whose IMAP
+// endpoint is fixed and documented; anything else is asked for.
+var knownProviders = map[string]providerPreset{
+	"gmail.com":      {name: "Gmail", host: "imap.gmail.com", port: 993, hint: gmailHint},
+	"googlemail.com": {name: "Gmail", host: "imap.gmail.com", port: 993, hint: gmailHint},
+	"outlook.com":    {name: "Outlook", host: "outlook.office365.com", port: 993},
+	"hotmail.com":    {name: "Outlook", host: "outlook.office365.com", port: 993},
+	"live.com":       {name: "Outlook", host: "outlook.office365.com", port: 993},
+	"icloud.com": {name: "iCloud", host: "imap.mail.me.com", port: 993,
+		hint: "iCloud needs an app-specific password: https://account.apple.com"},
+	"me.com": {name: "iCloud", host: "imap.mail.me.com", port: 993},
+	"yandex.ru": {name: "Yandex", host: "imap.yandex.ru", port: 993,
+		hint: "Yandex needs an app password: https://id.yandex.ru/security/app-passwords"},
+	"yandex.com":   {name: "Yandex", host: "imap.yandex.ru", port: 993},
+	"fastmail.com": {name: "Fastmail", host: "imap.fastmail.com", port: 993},
+}
+
+// knownProvider looks an address's domain up in knownProviders.
+func knownProvider(email string) (providerPreset, bool) {
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return providerPreset{}, false
+	}
+	preset, ok := knownProviders[strings.ToLower(strings.TrimSpace(email[at+1:]))]
+	return preset, ok
 }
 
 // splitCSV parses a comma-separated answer, dropping blanks so a trailing comma
