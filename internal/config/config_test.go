@@ -294,12 +294,12 @@ func TestLLMConfig_ModelIsResolvedPerProvider(t *testing.T) {
 		KeyLLMGeminiAPIKey:   "k",
 		KeyLLMAnthropicModel: "claude-sonnet-5",
 		KeyLLMOpenAIModel:    "gpt-5.6-terra",
-		KeyLLMGeminiModel:    "gemini-2.5-flash",
+		KeyLLMGeminiModel:    "gemini-3.6-flash",
 	})
 
 	// Switching llm.provider alone must be enough: each provider keeps its own
 	// model, so a Claude id can never be sent to Gemini.
-	assert.Equal(t, "gemini-2.5-flash", cfg.LLM.Model)
+	assert.Equal(t, "gemini-3.6-flash", cfg.LLM.Model)
 	assert.Equal(t, "claude-sonnet-5", cfg.LLM.AnthropicModel)
 	assert.Equal(t, "gpt-5.6-terra", cfg.LLM.OpenAIModel)
 }

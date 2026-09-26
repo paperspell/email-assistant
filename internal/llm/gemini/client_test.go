@@ -36,7 +36,7 @@ func serve(t *testing.T, status int, body string) (*Client, *http.Request, *[]by
 		_, _ = io.WriteString(w, body)
 	}))
 	t.Cleanup(srv.Close)
-	return NewWithBaseURL("test-key", "gemini-2.5-flash", srv.URL), gotReq, &gotBody
+	return NewWithBaseURL("test-key", "gemini-3.6-flash", srv.URL), gotReq, &gotBody
 }
 
 func TestClassify_ParsesResult(t *testing.T) {
@@ -69,12 +69,12 @@ func TestClassify_SendsKeyAsHeaderNotQuery(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "test-key", r.Header.Get("x-goog-api-key"))
 		assert.NotContains(t, r.URL.RawQuery, "test-key")
-		assert.Contains(t, r.URL.Path, "/models/gemini-2.5-flash:generateContent")
+		assert.Contains(t, r.URL.Path, "/models/gemini-3.6-flash:generateContent")
 		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"text":"{}"}]}}]}`)
 	}))
 	defer srv.Close()
 
-	c := NewWithBaseURL("test-key", "gemini-2.5-flash", srv.URL)
+	c := NewWithBaseURL("test-key", "gemini-3.6-flash", srv.URL)
 	_, err := c.Classify(context.Background(), testRequest())
 	require.NoError(t, err)
 }
@@ -145,7 +145,7 @@ func TestClassify_TruncatedCandidateReportsFinishReason(t *testing.T) {
 
 func TestNew_DefaultsTheModel(t *testing.T) {
 	assert.Equal(t, llm.DefaultModel("gemini"), New("k", "").model)
-	assert.Equal(t, "gemini-2.5-pro", New("k", "gemini-2.5-pro").model)
+	assert.Equal(t, "gemini-3.8-flash", New("k", "gemini-3.8-flash").model)
 }
 
 func TestName(t *testing.T) {
