@@ -26,6 +26,11 @@ type Poller struct {
 	Handler      *Handler
 	SettingsRepo *repo.SettingsRepo
 	Logger       log.Logger
+	// AllowedChatID is the one chat the bot serves. A Telegram bot is reachable
+	// by anyone who learns its username, so every update from another chat is
+	// dropped before it can reach the handler. Zero disables the check, which
+	// only tests should rely on.
+	AllowedChatID int64
 }
 
 // Run starts the polling loop. It blocks until ctx is cancelled.
@@ -58,7 +63,9 @@ func (p *Poller) Run(ctx context.Context) error {
 		}
 
 		for _, update := range updates {
-			if err := p.Handler.Handle(ctx, update); err != nil {
+			if chat, ok := p.allowed(update); !ok {
+				p.Logger.Info("dropped update from an unknown chat", "chat_id", chat, "update_id", update.UpdateId)
+			} else if err := p.Handler.Handle(ctx, update); err != nil {
 				p.Logger.Error(err, "update_id", update.UpdateId)
 			}
 			if update.UpdateId >= offset {
@@ -104,4 +111,34 @@ func (p *Poller) saveOffset(ctx context.Context, offset int64) {
 	if err := p.SettingsRepo.Set(ctx, config.KeyTelegramUpdateOffset, strconv.FormatInt(offset, 10)); err != nil {
 		p.Logger.Error(err)
 	}
+}
+
+// allowed reports whether an update may reach the handler, and the chat it
+// came from. An update with no chat at all — a type the poller never asked
+// for — is dropped too.
+func (p *Poller) allowed(u gotgbot.Update) (int64, bool) {
+	chat, ok := updateChatID(u)
+	if !ok {
+		return 0, false
+	}
+	if p.AllowedChatID == 0 {
+		return chat, true
+	}
+	return chat, chat == p.AllowedChatID
+}
+
+// updateChatID returns the chat an update came from. A message's chat is its
+// own; a button press belongs to the chat holding the message it was pressed
+// in, falling back to the presser when Telegram withholds the message.
+func updateChatID(u gotgbot.Update) (int64, bool) {
+	switch {
+	case u.Message != nil:
+		return u.Message.Chat.Id, true
+	case u.CallbackQuery != nil:
+		if u.CallbackQuery.Message != nil {
+			return u.CallbackQuery.Message.GetChat().Id, true
+		}
+		return u.CallbackQuery.From.Id, true
+	}
+	return 0, false
 }
