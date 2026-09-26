@@ -100,6 +100,19 @@ func (r *RuleRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// Get returns one rule by id, or nil. A "remove rule" button carries only the
+// rule id, and the chat pressing it must own the rule's account.
+func (r *RuleRepo) Get(ctx context.Context, id string) (*domain.FilterRule, error) {
+	rules, err := r.query(ctx, `SELECT `+ruleColumns+` FROM filter_rules WHERE id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		return nil, nil
+	}
+	return &rules[0], nil
+}
+
 func (r *RuleRepo) query(ctx context.Context, q string, args ...any) ([]domain.FilterRule, error) {
 	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {

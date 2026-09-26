@@ -190,21 +190,24 @@ func runAccountList(ctx context.Context, ar *repo.AccountRepo) error {
 		return nil
 	}
 
-	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %-8s  %-6s  %s\n",
-		"NAME", "EMAIL", "HOST", "ENABLED", "AUTH", "DIGEST", "FOCUS")
-	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %-8s  %-6s  %s\n",
+	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %-8s  %-6s  %-5s  %s\n",
+		"NAME", "EMAIL", "HOST", "ENABLED", "AUTH", "DIGEST", "FOCUS", "CHAT")
+	fmt.Printf("%-20s  %-28s  %-24s  %-7s  %-8s  %-6s  %-5s  %s\n",
 		strings.Repeat("-", 20), strings.Repeat("-", 28), strings.Repeat("-", 24),
-		"-------", "--------", "------", "-----")
+		"-------", "--------", "------", "-----", "----")
 	for _, a := range accounts {
-		digest, focus := "on", "-"
+		digest, focus, chat := "on", "-", "main"
 		if !a.DigestEnabled {
 			digest = "off"
 		}
 		if a.Focus != "" {
 			focus = "yes"
 		}
-		fmt.Printf("%-20s  %-28s  %-24s  %-7v  %-8s  %-6s  %s\n",
-			a.Name, a.Email, a.Host, a.Enabled, a.AuthType, digest, focus)
+		if a.TelegramChatID != 0 {
+			chat = strconv.FormatInt(a.TelegramChatID, 10)
+		}
+		fmt.Printf("%-20s  %-28s  %-24s  %-7v  %-8s  %-6s  %-5s  %s\n",
+			a.Name, a.Email, a.Host, a.Enabled, a.AuthType, digest, focus, chat)
 	}
 	return nil
 }
@@ -366,6 +369,10 @@ func addOrEditAccount(
 		bots = splitCSV(promptText(sc, "  Bot handles", strings.Join(cur.BotHandles, ", ")))
 	}
 	digestEnabled := confirm(sc, "  Send a daily digest for this account?", cur.DigestEnabled)
+	chatID, err := promptAccountChat(ctx, sc, sr, cur.TelegramChatID)
+	if err != nil {
+		return err
+	}
 
 	acc := domain.Account{
 		ID:             email, // identity = email
@@ -384,6 +391,7 @@ func addOrEditAccount(
 		Aliases:        aliases,
 		BotHandles:     bots,
 		DigestEnabled:  digestEnabled,
+		TelegramChatID: chatID,
 	}
 
 	if acc.Email == "" || acc.Host == "" {
@@ -461,6 +469,37 @@ func knownProvider(email string) (providerPreset, bool) {
 	}
 	preset, ok := knownProviders[strings.ToLower(strings.TrimSpace(email[at+1:]))]
 	return preset, ok
+}
+
+// promptAccountChat asks which Telegram chat this account notifies. Enter keeps
+// the installation's main chat — the right answer for the owner's own
+// mailboxes. "detect" waits for the account's person to message the bot and
+// takes their chat, the way init does for the main chat; a chat id can also be
+// typed. Only that chat will then receive, and be able to act on, this
+// account's mail.
+func promptAccountChat(ctx context.Context, sc *bufio.Scanner, sr *repo.SettingsRepo, current int64) (int64, error) {
+	fmt.Println("  Telegram chat for this account: Enter = your main chat; a chat id;")
+	fmt.Println("    or 'detect' — have that person message the bot now (most recent message wins).")
+	def := "main"
+	if current != 0 {
+		def = strconv.FormatInt(current, 10)
+	}
+	answer := strings.ToLower(strings.TrimSpace(promptText(sc, "  Telegram chat", def)))
+	switch answer {
+	case "", "main":
+		return 0, nil
+	case "detect":
+		token, err := sr.Get(ctx, config.KeyTelegramBotToken)
+		if err != nil {
+			return 0, fmt.Errorf("read bot token: %w", err)
+		}
+		answer = strings.TrimSpace(detectTelegramChatID(token, sc, ""))
+	}
+	id, err := strconv.ParseInt(answer, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("telegram chat must be 'main', 'detect' or a chat id, got %q", answer)
+	}
+	return id, nil
 }
 
 // splitCSV parses a comma-separated answer, dropping blanks so a trailing comma

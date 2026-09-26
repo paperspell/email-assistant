@@ -14,6 +14,7 @@ import (
 	"github.com/paperspell/email-assistant/internal/db"
 	"github.com/paperspell/email-assistant/internal/db/repo"
 	"github.com/paperspell/email-assistant/internal/domain"
+	"github.com/paperspell/email-assistant/internal/i18n"
 	"github.com/paperspell/email-assistant/internal/pkg/log"
 )
 
@@ -391,4 +392,44 @@ func TestHandler_Details_BodyUnavailable(t *testing.T) {
 
 	require.Len(t, mockBot.followUps, 1)
 	assert.Contains(t, mockBot.followUps[0], "(body unavailable)")
+}
+
+func TestHandler_ChatOwns(t *testing.T) {
+	h := &Handler{
+		OwnerChatID: 1001,
+		Accounts: map[string]AccountInfo{
+			"me@x.com":     {Email: "me@x.com"}, // no chat of its own → main chat
+			"friend@x.com": {Email: "friend@x.com", ChatID: 2002},
+		},
+	}
+	assert.True(t, h.chatOwns(1001, "me@x.com"))
+	assert.True(t, h.chatOwns(2002, "friend@x.com"))
+	// The friend cannot act on the owner's mail, nor the owner on the friend's.
+	assert.False(t, h.chatOwns(2002, "me@x.com"))
+	assert.False(t, h.chatOwns(1001, "friend@x.com"))
+	// An account the handler has never heard of belongs to the main chat only.
+	assert.True(t, h.chatOwns(1001, "unknown@x.com"))
+	assert.False(t, h.chatOwns(2002, "unknown@x.com"))
+	// No main chat configured: checks are off (tests, not production).
+	assert.True(t, (&Handler{}).chatOwns(4242, "me@x.com"))
+}
+
+func TestHandler_RepliesGoToTheSendersChat(t *testing.T) {
+	// A reply to a message from a friend's chat must land in that chat, not the
+	// main one. The hint for a bare /important needs no database, so it shows
+	// the routing on its own.
+	mainBot, friendBot := &mockBotClient{}, &mockBotClient{}
+	bots := map[int64]BotClient{1001: mainBot, 2002: friendBot}
+	h := &Handler{
+		Bot: mainBot, Logger: log.Noop{}, P: i18n.English(), OwnerChatID: 1001,
+		BotFor: func(chatID int64) BotClient { return bots[chatID] },
+	}
+
+	err := h.Handle(context.Background(), gotgbot.Update{Message: &gotgbot.Message{
+		Chat: gotgbot.Chat{Id: 2002}, Text: "/important 3",
+	}})
+
+	require.NoError(t, err)
+	assert.Len(t, friendBot.followUps, 1, "the friend's chat gets the reply")
+	assert.Empty(t, mainBot.followUps, "the main chat hears nothing")
 }

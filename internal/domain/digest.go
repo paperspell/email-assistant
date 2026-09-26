@@ -16,7 +16,11 @@ type Digest struct {
 	// resolves to this digest. A single-message digest has exactly one entry,
 	// equal to TGMessageID.
 	TGMessageIDs []int64
-	SentAt       time.Time
+	// TGChatID is the chat the parts were sent to. Message ids are unique only
+	// within a chat, so a reply is resolved by (chat, message), not message
+	// alone. 0 on digests sent before accounts had their own chats.
+	TGChatID int64
+	SentAt   time.Time
 }
 
 // DigestItem is one numbered, LLM-judged-unimportant email in a digest.

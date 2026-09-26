@@ -18,6 +18,7 @@ func (h *Handler) handleMessage(ctx context.Context, msg *gotgbot.Message) error
 	if msg == nil {
 		return nil
 	}
+	h = h.forChat(msg.Chat.Id)
 	text := strings.TrimSpace(msg.Text)
 
 	// A non-command message may complete a pending multi-step action.
@@ -36,11 +37,13 @@ func (h *Handler) handleMessage(ctx context.Context, msg *gotgbot.Message) error
 	if msg.ReplyToMessage == nil || h.DigestRepo == nil {
 		return h.Bot.SendFollowUp(ctx, h.P.T("digest_reply_hint"))
 	}
-	d, err := h.DigestRepo.GetByTGMessageID(ctx, msg.ReplyToMessage.MessageId)
+	d, err := h.DigestRepo.GetByTGMessage(ctx, msg.Chat.Id, msg.ReplyToMessage.MessageId)
 	if err != nil {
 		return err
 	}
-	if d == nil {
+	// A digest from another chat is treated as not found: the reply must not
+	// reveal that a message id it does not own resolves to anything.
+	if d == nil || !h.chatOwns(msg.Chat.Id, d.AccountID) {
 		return h.Bot.SendFollowUp(ctx, h.P.T("digest_reply_hint"))
 	}
 
