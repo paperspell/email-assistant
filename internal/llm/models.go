@@ -31,9 +31,11 @@ func SuggestedModels(provider string) []ModelChoice {
 		}
 	case "gemini":
 		return []ModelChoice{
-			{ID: "gemini-2.5-flash", Hint: "recommended — balanced judgement and cost"},
-			{ID: "gemini-2.5-pro", Hint: "highest quality, several times the cost"},
-			{ID: "gemini-2.5-flash-lite", Hint: "cheapest and fastest, misses nuance more often"},
+			// The 2.5 family is closed to new users and retires in October 2026;
+			// Pro exists only as a preview, so the stable Flash tiers are offered.
+			{ID: "gemini-3.6-flash", Hint: "recommended — balanced judgement and cost"},
+			{ID: "gemini-3.8-flash", Hint: "highest quality among the stable Flash models"},
+			{ID: "gemini-3.5-flash-lite", Hint: "cheapest and fastest, misses nuance more often"},
 		}
 	default:
 		return nil

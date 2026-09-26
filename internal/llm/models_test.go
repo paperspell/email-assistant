@@ -26,7 +26,7 @@ func TestSuggestedModels_PerProvider(t *testing.T) {
 func TestDefaultModel_IsFirstSuggestion(t *testing.T) {
 	assert.Equal(t, "claude-sonnet-5", DefaultModel("anthropic"))
 	assert.Equal(t, "gpt-5.6-terra", DefaultModel("openai"))
-	assert.Equal(t, "gemini-2.5-flash", DefaultModel("gemini"))
+	assert.Equal(t, "gemini-3.6-flash", DefaultModel("gemini"))
 	assert.Empty(t, DefaultModel("nope"))
 }
 
