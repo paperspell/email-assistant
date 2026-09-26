@@ -1,0 +1,43 @@
+# System-wide unit for a root install. Replace <user> with the account that
+# owns the database, copy to /etc/systemd/system/email-agent.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now email-agent
+#
+# For a no-root install use `email-agent service install` instead, which writes
+# a user unit with the subset of this sandboxing that works unprivileged.
+
+[Unit]
+Description=Email Agent (IMAP -> Telegram)
+Documentation=https://github.com/paperspell/email-assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<user>
+Group=<user>
+# The database key comes from this 0600 file, not from the unit: files in
+# /etc/systemd are world-readable.
+EnvironmentFile=/home/<user>/.config/email-agent/env
+ExecStart=/home/<user>/.local/bin/email-agent run
+Restart=always
+RestartSec=15
+# Some hosts have no working IPv6 route to api.telegram.org. The cgo resolver
+# honours /etc/gai.conf; the pure-Go one does not. Harmless where cgo is absent.
+Environment=GODEBUG=netdns=cgo
+
+# Sandboxing. MemoryDenyWriteExecute is deliberately absent: SQLite here runs
+# on wasm, compiled to machine code at start, and denying W^X memory breaks
+# every query.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/<user>/.email-agent
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

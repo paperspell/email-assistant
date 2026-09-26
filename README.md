@@ -77,6 +77,23 @@ email-agent --db /custom/path/db.sqlite run
 email-agent version
 ```
 
+## Run as a service
+
+On Linux, install the daemon as a systemd **user** unit — no root needed:
+
+```bash
+export EMAIL_AGENT_KEY=...            # the key 'email-agent init' printed, if not already in your shell
+email-agent service install --start
+loginctl enable-linger "$USER"        # keep it running after logout and start it at boot
+journalctl --user -u email-agent -f
+```
+
+`install` writes `~/.config/systemd/user/email-agent.service` pointing at the binary that ran it, and
+`~/.config/email-agent/env` (0600) holding the key. Re-running it never overwrites an existing key file.
+`email-agent service uninstall` stops the service and removes the unit; the database and key stay.
+
+For a system-wide install with the full sandboxing set, see [`contrib/email-agent.service`](contrib/email-agent.service).
+
 ## Environment Variables
 
 | Variable | Description |
