@@ -212,3 +212,21 @@ func TestAccountRepo_AliasesToleratePaddingAndBlanks(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, splitAliases(" a, ,b "))
 	assert.Nil(t, splitAliases(""))
 }
+
+func TestAccountRepo_TelegramChatRoundTrip(t *testing.T) {
+	r := setupAccountRepo(t)
+	ctx := context.Background()
+	a := sampleAccount("friend@gmail.com")
+	a.TelegramChatID = 555_000_111
+	require.NoError(t, r.Upsert(ctx, a))
+
+	got, err := r.Get(ctx, "friend@gmail.com")
+	require.NoError(t, err)
+	assert.Equal(t, int64(555_000_111), got.TelegramChatID)
+
+	// An account without its own chat stays on the main one.
+	require.NoError(t, r.Upsert(ctx, sampleAccount("me@gmail.com")))
+	mine, err := r.Get(ctx, "me@gmail.com")
+	require.NoError(t, err)
+	assert.Zero(t, mine.TelegramChatID)
+}

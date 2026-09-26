@@ -111,3 +111,70 @@ func TestDigestRepo_SingleMessageDigestNeedsNoPartList(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "dig-one", got.ID)
 }
+
+func TestDigestRepo_SameMessageIDInTwoChatsAreTwoDigests(t *testing.T) {
+	// Telegram message ids are per chat: two people's chats will both reach
+	// message 1234. Before chats were part of the key this was a UNIQUE
+	// violation on the second save — the second friend's digest never recorded.
+	r := NewDigestRepo(openTestDB(t))
+	ctx := context.Background()
+	require.NoError(t, r.Save(ctx, domain.Digest{
+		ID: "d-owner", AccountID: "me@x.com", Date: "2026-09-26",
+		TGMessageID: 1234, TGMessageIDs: []int64{1234}, TGChatID: 1001, SentAt: time.Now(),
+	}, nil))
+	require.NoError(t, r.Save(ctx, domain.Digest{
+		ID: "d-friend", AccountID: "friend@x.com", Date: "2026-09-26",
+		TGMessageID: 1234, TGMessageIDs: []int64{1234}, TGChatID: 2002, SentAt: time.Now(),
+	}, nil))
+
+	mine, err := r.GetByTGMessage(ctx, 1001, 1234)
+	require.NoError(t, err)
+	require.NotNil(t, mine)
+	assert.Equal(t, "d-owner", mine.ID)
+
+	theirs, err := r.GetByTGMessage(ctx, 2002, 1234)
+	require.NoError(t, err)
+	require.NotNil(t, theirs)
+	assert.Equal(t, "d-friend", theirs.ID)
+
+	// A chat that received neither resolves nothing.
+	none, err := r.GetByTGMessage(ctx, 3003, 1234)
+	require.NoError(t, err)
+	assert.Nil(t, none)
+}
+
+func TestDigestRepo_LegacyDigestResolvesFromAnyChat(t *testing.T) {
+	// Digests recorded before accounts had chats carry chat 0. They still
+	// resolve — the handler's ownership check is what keeps another chat from
+	// acting on them.
+	r := NewDigestRepo(openTestDB(t))
+	ctx := context.Background()
+	require.NoError(t, r.Save(ctx, domain.Digest{
+		ID: "d-old", AccountID: "me@x.com", Date: "2026-09-01",
+		TGMessageID: 77, SentAt: time.Now(), // TGChatID 0
+	}, nil))
+
+	got, err := r.GetByTGMessage(ctx, 1001, 77)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "d-old", got.ID)
+	assert.Zero(t, got.TGChatID)
+}
+
+func TestDigestRepo_GetByID(t *testing.T) {
+	r := NewDigestRepo(openTestDB(t))
+	ctx := context.Background()
+	require.NoError(t, r.Save(ctx, domain.Digest{
+		ID: "d-1", AccountID: "a@x.com", Date: "2026-09-26", TGMessageID: 5, TGChatID: 9, SentAt: time.Now(),
+	}, nil))
+
+	got, err := r.GetByID(ctx, "d-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "a@x.com", got.AccountID)
+	assert.Equal(t, int64(9), got.TGChatID)
+
+	missing, err := r.GetByID(ctx, "nope")
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+}

@@ -192,3 +192,16 @@ func TestFormatMessage_EscapesExtractedBody(t *testing.T) {
 	assert.Contains(t, out, "&lt;b&gt;жирный&lt;/b&gt; &amp; прочее")
 	assert.Contains(t, out, "Язык оригинала: румынский")
 }
+
+func TestBot_ForChatSharesTheClient(t *testing.T) {
+	base := &Bot{chatID: 1001, p: i18n.English()}
+
+	friend := base.ForChat(2002)
+	assert.Equal(t, int64(2002), friend.chatID)
+	assert.Equal(t, int64(1001), base.chatID, "the original must not be mutated")
+	assert.Same(t, base.p, friend.p, "translations are shared, not copied")
+
+	// The main chat and 0 both mean "the bot as configured".
+	assert.Same(t, base, base.ForChat(1001))
+	assert.Same(t, base, base.ForChat(0))
+}

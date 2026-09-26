@@ -30,6 +30,19 @@ func NewBot(token string, chatID int64, p *i18n.Printer) (*Bot, error) {
 	return &Bot{bot: bot, chatID: chatID, p: p}, nil
 }
 
+// ForChat returns a view of the bot that sends to chatID, sharing the client
+// and translations. One installation can then serve several people: each
+// account's notifications, digest and replies go to that account's chat.
+// 0, or the bot's own chat, returns the receiver unchanged.
+func (b *Bot) ForChat(chatID int64) *Bot {
+	if chatID == 0 || chatID == b.chatID {
+		return b
+	}
+	bound := *b
+	bound.chatID = chatID
+	return &bound
+}
+
 // SendNewEmail sends a notification with an inline action keyboard.
 // Returns the Telegram message ID of the sent message.
 func (b *Bot) SendNewEmail(

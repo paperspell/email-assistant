@@ -37,6 +37,9 @@ type Config struct {
 	Now          func() time.Time // injectable clock; defaults to time.Now
 	// Printer renders the digest in the user's language; nil falls back to English.
 	Printer *i18n.Printer
+	// ChatID is the Telegram chat Sender delivers to, recorded with the digest
+	// so a /important reply is resolved by (chat, message).
+	ChatID int64
 }
 
 // Scheduler sends one account's daily digest at a fixed local time.
@@ -126,6 +129,7 @@ func (s *Scheduler) runOnce(ctx context.Context) error {
 		Date:         date,
 		TGMessageID:  msgIDs[len(msgIDs)-1], // the part carrying the buttons
 		TGMessageIDs: msgIDs,
+		TGChatID:     s.cfg.ChatID,
 		SentAt:       s.cfg.Now().UTC(),
 	}, items); err != nil {
 		return fmt.Errorf("save digest: %w", err)

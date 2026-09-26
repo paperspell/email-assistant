@@ -42,6 +42,9 @@ type Mailbox interface {
 type AccountInfo struct {
 	Name  string
 	Email string
+	// ChatID is the account's own Telegram chat; 0 means the installation's
+	// main chat.
+	ChatID int64
 }
 
 // Handler processes incoming Telegram callback queries and messages.
@@ -61,6 +64,43 @@ type Handler struct {
 	// P renders replies and buttons in the configured language. Nil falls back
 	// to English rather than to raw message ids.
 	P *i18n.Printer
+
+	// OwnerChatID is the installation's main chat, which owns every account
+	// without a chat of its own. 0 disables ownership checks (tests).
+	OwnerChatID int64
+	// BotFor and NotifierFor return chat-bound clients, so replies to an update
+	// go back to the chat it came from rather than to the main chat. Nil keeps
+	// Bot and Notifier as they are.
+	BotFor      func(chatID int64) BotClient
+	NotifierFor func(chatID int64) Notifier
+}
+
+// forChat returns a copy of the handler whose Bot and Notifier send to chatID.
+// Every reply path below goes through h.Bot, so binding once here binds them
+// all without threading a chat through each call.
+func (h *Handler) forChat(chatID int64) *Handler {
+	bound := *h
+	if h.BotFor != nil {
+		bound.Bot = h.BotFor(chatID)
+	}
+	if h.NotifierFor != nil {
+		bound.Notifier = h.NotifierFor(chatID)
+	}
+	return &bound
+}
+
+// chatOwns reports whether chatID may act on accountID. An account with its own
+// chat belongs to that chat alone; one without belongs to the main chat. When
+// no main chat is configured the check is off — the daemon always sets one.
+func (h *Handler) chatOwns(chatID int64, accountID string) bool {
+	if h.OwnerChatID == 0 {
+		return true
+	}
+	owner := h.OwnerChatID
+	if info, ok := h.Accounts[accountID]; ok && info.ChatID != 0 {
+		owner = info.ChatID
+	}
+	return chatID == owner
 }
 
 // Handle dispatches a single Telegram update (callback query or message).
@@ -79,20 +119,49 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 		return nil
 	}
 
+	msgID := q.Message.GetMessageId()
+	chatID := q.Message.GetChat().Id
+	h = h.forChat(chatID)
+
 	if err := h.Bot.AnswerCallback(q.Id, ""); err != nil {
 		h.Logger.Error(err, "callback_query_id", q.Id)
 	}
 
-	msgID := q.Message.GetMessageId()
-	chatID := q.Message.GetChat().Id
-
 	// Actions whose argument is not an email id are handled before the lookup.
-	switch {
-	case action == "digest_read" || action == "digest_remove":
+	// Each is checked against the account it would act on: a button can only be
+	// pressed in the chat that received it, but the account behind the id is
+	// what must belong to that chat.
+	switch action {
+	case "digest_read", "digest_remove":
+		d, err := h.DigestRepo.GetByID(ctx, arg)
+		if err != nil {
+			return err
+		}
+		if d == nil {
+			return h.Bot.RemoveKeyboard(msgID)
+		}
+		if !h.chatOwns(chatID, d.AccountID) {
+			h.Logger.Info("callback from a chat that does not own the account",
+				"chat_id", chatID, "account_id", d.AccountID, "action", action)
+			return nil
+		}
 		return h.handleDigestBulk(ctx, action, arg, msgID)
-	case strings.HasPrefix(action, "prom_"):
+	case "prom_rmrule":
+		if h.RuleRepo != nil {
+			rule, err := h.RuleRepo.Get(ctx, arg)
+			if err != nil {
+				return err
+			}
+			if rule != nil && !h.chatOwns(chatID, rule.AccountID) {
+				h.Logger.Info("callback from a chat that does not own the account",
+					"chat_id", chatID, "account_id", rule.AccountID, "action", action)
+				return nil
+			}
+		}
 		return h.handlePromoteFollowup(ctx, action, arg, msgID)
 	}
+	// prom_allow / prom_keep / prom_no carry an email id and are checked with
+	// the email actions below.
 
 	e, err := h.EmailRepo.GetByID(ctx, arg)
 	if err != nil {
@@ -101,6 +170,14 @@ func (h *Handler) Handle(ctx context.Context, update gotgbot.Update) error {
 	if e == nil {
 		h.Logger.Info("callback references unknown email", "email_id", arg)
 		return h.Bot.RemoveKeyboard(msgID)
+	}
+	if !h.chatOwns(chatID, e.AccountID) {
+		h.Logger.Info("callback from a chat that does not own the account",
+			"chat_id", chatID, "account_id", e.AccountID, "action", action)
+		return nil
+	}
+	if strings.HasPrefix(action, "prom_") {
+		return h.handlePromoteFollowup(ctx, action, arg, msgID)
 	}
 
 	switch {

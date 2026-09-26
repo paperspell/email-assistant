@@ -167,6 +167,14 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	// mailbox (mark read, fetch body) through the same provider the scheduler uses.
 	mailboxes := make(map[string]telegram.Mailbox, len(cfg.Accounts))
 	accountInfos := make(map[string]telegram.AccountInfo, len(cfg.Accounts))
+	// The bot answers only the chats it serves: the main one and each account's.
+	allowedChats := map[int64]bool{cfg.Telegram.ChatID: true}
+	chatFor := func(acc domain.Account) int64 {
+		if acc.TelegramChatID != 0 {
+			return acc.TelegramChatID
+		}
+		return cfg.Telegram.ChatID
+	}
 
 	for _, acc := range cfg.Accounts {
 		provider, err := newProvider(gCtx, acc, cfg.OAuth, fetchBody, accountRepo, logger)
@@ -174,7 +182,14 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			return err
 		}
 		mailboxes[acc.ID] = provider
-		accountInfos[acc.ID] = telegram.AccountInfo{Name: acc.Name, Email: acc.Email}
+		accountInfos[acc.ID] = telegram.AccountInfo{Name: acc.Name, Email: acc.Email, ChatID: acc.TelegramChatID}
+		allowedChats[chatFor(acc)] = true
+		// Everything this account sends — notifications, alerts, the digest —
+		// goes to the account's own chat.
+		accBot := bot.ForChat(chatFor(acc))
+		if acc.TelegramChatID != 0 {
+			logger.Info("account notifies its own chat", "account", acc.Email, "chat_id", acc.TelegramChatID)
+		}
 
 		if acc.DigestEnabled {
 			digestTime := acc.DigestTime
@@ -189,8 +204,9 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 				EmailRepo:    emailRepo,
 				ClassRepo:    classificationRepo,
 				DigestRepo:   digestRepo,
-				Sender:       bot,
+				Sender:       accBot,
 				Printer:      printer,
+				ChatID:       chatFor(acc),
 				Logger:       logger.With("component", "digest", "account", acc.Email),
 			})
 			g.Go(func() error { return digestSched.Start(gCtx) })
@@ -219,8 +235,8 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			BotHandles:          acc.BotHandles,
 			ScoreDivergenceWarn: cfg.LLM.ScoreDivergenceWarn,
 			Provider:            provider,
-			Notifier:            bot,
-			Alerter:             bot,
+			Notifier:            accBot,
+			Alerter:             accBot,
 			Printer:             printer,
 			Logger:              logger.With("component", "scheduler", "account", acc.Email),
 			RuleRepo:            ruleRepo,
@@ -246,14 +262,17 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 		Accounts:           accountInfos,
 		P:                  printer,
 		Logger:             logger.With("component", "telegram_handler"),
+		OwnerChatID:        cfg.Telegram.ChatID,
+		BotFor:             func(chatID int64) telegram.BotClient { return bot.ForChat(chatID) },
+		NotifierFor:        func(chatID int64) telegram.Notifier { return bot.ForChat(chatID) },
 	}
 
 	poller := &telegram.Poller{
-		Bot:           bot,
-		Handler:       handler,
-		SettingsRepo:  settingsRepo,
-		Logger:        logger.With("component", "telegram_poller"),
-		AllowedChatID: cfg.Telegram.ChatID,
+		Bot:          bot,
+		Handler:      handler,
+		SettingsRepo: settingsRepo,
+		Logger:       logger.With("component", "telegram_poller"),
+		AllowedChats: allowedChats,
 	}
 
 	g.Go(func() error { return poller.Run(gCtx) })

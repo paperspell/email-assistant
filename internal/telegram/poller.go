@@ -26,11 +26,11 @@ type Poller struct {
 	Handler      *Handler
 	SettingsRepo *repo.SettingsRepo
 	Logger       log.Logger
-	// AllowedChatID is the one chat the bot serves. A Telegram bot is reachable
-	// by anyone who learns its username, so every update from another chat is
-	// dropped before it can reach the handler. Zero disables the check, which
-	// only tests should rely on.
-	AllowedChatID int64
+	// AllowedChats are the chats the bot serves: the main chat and every
+	// account's own. A Telegram bot is reachable by anyone who learns its
+	// username, so every update from another chat is dropped before it can
+	// reach the handler. Empty disables the check, which only tests rely on.
+	AllowedChats map[int64]bool
 }
 
 // Run starts the polling loop. It blocks until ctx is cancelled.
@@ -121,10 +121,10 @@ func (p *Poller) allowed(u gotgbot.Update) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
-	if p.AllowedChatID == 0 {
+	if len(p.AllowedChats) == 0 {
 		return chat, true
 	}
-	return chat, chat == p.AllowedChatID
+	return chat, p.AllowedChats[chat]
 }
 
 // updateChatID returns the chat an update came from. A message's chat is its

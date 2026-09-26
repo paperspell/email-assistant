@@ -46,6 +46,10 @@ type Account struct {
 	// where a person's would be wanted. GitHub Apps ("[bot]" suffix) are
 	// recognised without being listed; GitLab bots must be.
 	BotHandles []string
+	// TelegramChatID is the chat this account notifies. 0 means the
+	// installation's main chat. A friend's mailbox on the same installation
+	// gets their own chat with the same bot, and only that chat can act on it.
+	TelegramChatID int64
 	// DigestEnabled controls whether this account sends a daily digest. In a
 	// focused mailbox the digest would list exactly the mail the owner asked
 	// not to see, so it is usually turned off there.

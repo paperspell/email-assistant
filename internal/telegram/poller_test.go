@@ -44,7 +44,7 @@ func TestPoller_LoadOffset_MalformedValue(t *testing.T) {
 }
 
 func TestPoller_AllowedDropsOtherChats(t *testing.T) {
-	p := &Poller{AllowedChatID: 1001}
+	p := &Poller{AllowedChats: map[int64]bool{1001: true}}
 	mine := gotgbot.Update{Message: &gotgbot.Message{Chat: gotgbot.Chat{Id: 1001}, Text: "/important 3"}}
 	stranger := gotgbot.Update{Message: &gotgbot.Message{Chat: gotgbot.Chat{Id: 4242}, Text: "/important 3"}}
 	myButton := gotgbot.Update{CallbackQuery: &gotgbot.CallbackQuery{
