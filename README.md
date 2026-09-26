@@ -14,19 +14,39 @@ Monitors your email accounts, detects new incoming emails, and sends Telegram no
 
 ## Requirements
 
-- Go 1.26+
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- An IMAP-enabled email account
+- An IMAP-enabled email account — for Gmail, an [app password](https://myaccount.google.com/apppasswords)
+- An API key for the classifier: Anthropic, OpenAI or Gemini
 
 ## Installation
+
+Pick one.
+
+**Binary** — download the archive for your platform from the
+[Releases](https://github.com/paperspell/email-assistant/releases) page, unpack it and put
+`email-agent` on your `PATH`:
+
+```bash
+tar -xzf email-agent_*_linux_amd64.tar.gz
+install -m 755 email-agent ~/.local/bin/
+```
+
+**Docker** — the container runs as an unprivileged user and keeps its database in a named volume:
+
+```bash
+cp .env.example .env
+docker compose run --rm email-agent init      # prints EMAIL_AGENT_KEY once — paste it into .env
+docker compose run --rm email-agent account add
+docker compose up -d
+```
+
+**From source** — needs Go 1.26+:
 
 ```bash
 git clone https://github.com/paperspell/email-assistant
 cd email-assistant
-make build
+make build                                    # writes bin/email-agent
 ```
-
-The binary is written to `bin/email-agent`.
 
 ## Setup
 

@@ -1,0 +1,16 @@
+services:
+  email-agent:
+    build: .
+    image: email-agent:local
+    restart: unless-stopped
+    # EMAIL_AGENT_KEY lives here: the container has no OS keychain, so `init`
+    # prints the key once and it must come back through the environment.
+    env_file: .env
+    volumes:
+      - data:/data
+    # `docker compose run --rm email-agent init` is interactive.
+    stdin_open: true
+    tty: true
+
+volumes:
+  data:
