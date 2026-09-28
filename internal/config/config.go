@@ -80,19 +80,21 @@ type TelegramConfig struct {
 
 // LLMConfig controls optional LLM-based classification.
 type LLMConfig struct {
-	Provider        string // "anthropic" | "openai" | "gemini" | "" (disabled)
+	Provider        string // "anthropic" | "openai" | "gemini" | "jev" | "" (disabled)
 	AnthropicAPIKey string
 	OpenAIAPIKey    string
 	GeminiAPIKey    string
+	JevAPIKey       string
 	// Model is the model for the active Provider, already resolved from the
 	// per-provider setting (falling back to the legacy llm.model). Empty means
 	// use the provider default.
 	Model string
-	// AnthropicModel, OpenAIModel and GeminiModel keep each provider's own
-	// choice, so switching Provider is a single setting change.
+	// AnthropicModel, OpenAIModel, GeminiModel and JevModel keep each
+	// provider's own choice, so switching Provider is a single setting change.
 	AnthropicModel      string
 	OpenAIModel         string
 	GeminiModel         string
+	JevModel            string
 	ScoreDivergenceWarn int // log WARN when |llm_score - rule_score| >= this
 }
 
@@ -109,6 +111,8 @@ func (c LLMConfig) modelFor(provider string) string {
 		m = c.OpenAIModel
 	case "gemini":
 		m = c.GeminiModel
+	case "jev":
+		m = c.JevModel
 	}
 	if m != "" {
 		return m
@@ -187,10 +191,12 @@ var KnownKeys = map[string]bool{
 	KeyLLMAnthropicAPIKey:        true,
 	KeyLLMOpenAIAPIKey:           true,
 	KeyLLMGeminiAPIKey:           true,
+	KeyLLMJevAPIKey:              true,
 	KeyLLMModel:                  true,
 	KeyLLMAnthropicModel:         true,
 	KeyLLMOpenAIModel:            true,
 	KeyLLMGeminiModel:            true,
+	KeyLLMJevModel:               true,
 	KeyLLMScoreDivergenceWarn:    true,
 	KeyContentMode:               true,
 	KeyLogLevel:                  true,
@@ -303,6 +309,9 @@ func applySettings(cfg *Config, s map[string]string) {
 	if v := s[KeyLLMGeminiAPIKey]; v != "" {
 		cfg.LLM.GeminiAPIKey = v
 	}
+	if v := s[KeyLLMJevAPIKey]; v != "" {
+		cfg.LLM.JevAPIKey = v
+	}
 	if v := s[KeyLLMModel]; v != "" {
 		cfg.LLM.Model = v
 	}
@@ -314,6 +323,9 @@ func applySettings(cfg *Config, s map[string]string) {
 	}
 	if v := s[KeyLLMGeminiModel]; v != "" {
 		cfg.LLM.GeminiModel = v
+	}
+	if v := s[KeyLLMJevModel]; v != "" {
+		cfg.LLM.JevModel = v
 	}
 	cfg.LLM.Model = cfg.LLM.modelFor(cfg.LLM.Provider)
 	if v := s[KeyLLMScoreDivergenceWarn]; v != "" {
@@ -407,6 +419,9 @@ func (c *Config) validate() error {
 	}
 	if c.LLM.Provider == "gemini" && c.LLM.GeminiAPIKey == "" {
 		return fmt.Errorf("config: %s is required when provider is gemini", KeyLLMGeminiAPIKey)
+	}
+	if c.LLM.Provider == "jev" && c.LLM.JevAPIKey == "" {
+		return fmt.Errorf("config: %s is required when provider is jev", KeyLLMJevAPIKey)
 	}
 	return nil
 }

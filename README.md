@@ -16,7 +16,8 @@ Monitors your email accounts, detects new incoming emails, and sends Telegram no
 
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - An IMAP-enabled email account — for Gmail, an [app password](https://myaccount.google.com/apppasswords)
-- An API key for the classifier: Anthropic, OpenAI or Gemini
+- An API key for the classifier: Anthropic, OpenAI, Gemini or Jev (TypeSafe). Jev only decides
+  what matters — its notifications and digest entries carry no summary
 
 ## Installation
 

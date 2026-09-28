@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/paperspell/email-assistant/internal/config"
 )
 
 // fakeTelegramSetup is a scripted telegramSetup for testing detectTelegramChatID
@@ -163,4 +165,13 @@ func TestPromptLanguage_UnknownFallsBackToEnglish(t *testing.T) {
 	// Storing an unrenderable value would leave the bot with no catalog to use.
 	sc := bufio.NewScanner(strings.NewReader("klingon\n"))
 	assert.Equal(t, "en", promptLanguage(sc, ""))
+}
+
+func TestProviderSettings_Jev(t *testing.T) {
+	assert.Equal(t, config.KeyLLMJevModel, providerModelKey("jev"))
+	// Ключ Jev виден в списке уже настроенных, как и ключи остальных.
+	assert.Equal(t, "gemini, jev", configuredProviders(map[string]string{
+		config.KeyLLMGeminiAPIKey: "g",
+		config.KeyLLMJevAPIKey:    "j",
+	}))
 }

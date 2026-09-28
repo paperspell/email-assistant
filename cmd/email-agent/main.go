@@ -30,6 +30,7 @@ import (
 	imapmail "github.com/paperspell/email-assistant/internal/email/imap"
 	llmanthropic "github.com/paperspell/email-assistant/internal/llm/anthropic"
 	llmgemini "github.com/paperspell/email-assistant/internal/llm/gemini"
+	llmjev "github.com/paperspell/email-assistant/internal/llm/jev"
 	llmopenai "github.com/paperspell/email-assistant/internal/llm/openai"
 )
 
@@ -157,6 +158,9 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 	case "gemini":
 		llmProvider = llmgemini.New(cfg.LLM.GeminiAPIKey, cfg.LLM.Model)
 		logger.Info("LLM provider: gemini", "model", cfg.LLM.Model)
+	case "jev":
+		llmProvider = llmjev.New(cfg.LLM.JevAPIKey, cfg.LLM.Model)
+		logger.Info("LLM provider: jev", "model", cfg.LLM.Model)
 	}
 
 	fetchBody := cfg.Content.Mode == "full_body" || cfg.Content.Mode == "redacted_body"
@@ -382,6 +386,10 @@ func providerBilling(provider string) (name, topUpURL string) {
 		return "Anthropic", "https://console.anthropic.com/settings/billing"
 	case "openai":
 		return "OpenAI", "https://platform.openai.com/settings/organization/billing"
+	case "jev":
+		// TypeSafe does not document a billing page; the console is where
+		// keys and the account live.
+		return "Jev (TypeSafe)", "https://console.typesafe.ai"
 	default:
 		return provider, ""
 	}
