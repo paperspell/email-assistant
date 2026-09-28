@@ -296,3 +296,17 @@ other = "הפעילו מחדש את הדימון: {{.Command}}"
 
 [reauth_note_testing]
 other = "במצב \"Testing\" ההרשאה של Gmail פגה בערך כל 7 ימים."
+
+# --- Classifier credits ------------------------------------------------------
+
+[credits_exhausted_title]
+other = "{{.Provider}}: נגמרו הקרדיטים ששולמו מראש"
+
+[credits_exhausted_body]
+other = "עד שהיתרה תוטען מחדש, דואר חדש ממוין רק לפי הכללים המובנים, ולכן ייתכן שחלק מההודעות החשובות לא יסומנו. אזכורים ישירים בתיבות עם מיקוד ממשיכים להגיע."
+
+[credits_top_up]
+other = "טעינת היתרה:"
+
+[credits_restored]
+other = "{{.Provider}} חזר לפעול — ההודעות מסווגות כרגיל."

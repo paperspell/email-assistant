@@ -296,3 +296,17 @@ other = "Uruchom ponownie demona: {{.Command}}"
 
 [reauth_note_testing]
 other = "W trybie „Testing\" dostęp Gmaila wygasa mniej więcej co 7 dni."
+
+# --- Classifier credits ------------------------------------------------------
+
+[credits_exhausted_title]
+other = "{{.Provider}}: skończyły się przedpłacone środki"
+
+[credits_exhausted_body]
+other = "Dopóki saldo nie zostanie doładowane, nowe wiadomości są sortowane tylko wbudowanymi regułami — część ważnych wiadomości może nie zostać zgłoszona. Bezpośrednie wzmianki w skrzynkach z fokusem nadal docierają."
+
+[credits_top_up]
+other = "Doładuj saldo:"
+
+[credits_restored]
+other = "{{.Provider}} znów działa — wiadomości są klasyfikowane jak zwykle."

@@ -161,6 +161,18 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 
 	fetchBody := cfg.Content.Mode == "full_body" || cfg.Content.Mode == "redacted_body"
 
+	// One alert for the whole daemon: every account classifies through the same
+	// provider and spends the same balance. It goes to the main chat — the owner
+	// pays for the provider, not the friends whose mailboxes it serves.
+	providerName, topUpURL := providerBilling(cfg.LLM.Provider)
+	creditAlert := &scheduler.CreditAlert{
+		Alerter:  bot,
+		Printer:  printer,
+		Logger:   logger.With("component", "credit_alert"),
+		Provider: providerName,
+		TopUpURL: topUpURL,
+	}
+
 	g, gCtx := errgroup.WithContext(ctx)
 
 	// Per-account providers are kept so the Telegram handler can act on the
@@ -237,6 +249,7 @@ func runDaemon(ctx context.Context, path string, localDev bool) error {
 			Provider:            provider,
 			Notifier:            accBot,
 			Alerter:             accBot,
+			CreditAlert:         creditAlert,
 			Printer:             printer,
 			Logger:              logger.With("component", "scheduler", "account", acc.Email),
 			RuleRepo:            ruleRepo,
@@ -357,4 +370,19 @@ func resolveDBPath(flagValue string) string {
 		return "email-agent.db"
 	}
 	return filepath.Join(home, ".email-agent", "email-agent.db")
+}
+
+// providerBilling names an LLM provider for the owner and links the page where
+// its balance is topped up.
+func providerBilling(provider string) (name, topUpURL string) {
+	switch provider {
+	case "gemini":
+		return "Gemini", "https://aistudio.google.com/billing"
+	case "anthropic":
+		return "Anthropic", "https://console.anthropic.com/settings/billing"
+	case "openai":
+		return "OpenAI", "https://platform.openai.com/settings/organization/billing"
+	default:
+		return provider, ""
+	}
 }
