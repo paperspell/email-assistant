@@ -295,3 +295,17 @@ other = "Restart the daemon: {{.Command}}"
 
 [reauth_note_testing]
 other = "Gmail in \"Testing\" mode expires this roughly every 7 days."
+
+# --- Classifier credits ------------------------------------------------------
+
+[credits_exhausted_title]
+other = "{{.Provider}}: prepaid credits have run out"
+
+[credits_exhausted_body]
+other = "New mail is being sorted by the built-in rules until the balance is topped up, so some important emails may not be flagged. Direct mentions in focused mailboxes still get through."
+
+[credits_top_up]
+other = "Top up the balance:"
+
+[credits_restored]
+other = "{{.Provider}} is working again — emails are being classified as usual."

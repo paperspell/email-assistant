@@ -290,3 +290,17 @@ other = "Starte den Daemon neu: {{.Command}}"
 
 [reauth_note_testing]
 other = "Im Modus „Testing\" läuft der Gmail-Zugriff etwa alle 7 Tage ab."
+
+# --- Classifier credits ------------------------------------------------------
+
+[credits_exhausted_title]
+other = "{{.Provider}}: Prepaid-Guthaben aufgebraucht"
+
+[credits_exhausted_body]
+other = "Bis das Guthaben aufgeladen ist, werden neue E-Mails nur nach den eingebauten Regeln sortiert — manche wichtige E-Mail wird womöglich nicht gemeldet. Direkte Erwähnungen in fokussierten Postfächern kommen weiterhin durch."
+
+[credits_top_up]
+other = "Guthaben aufladen:"
+
+[credits_restored]
+other = "{{.Provider}} funktioniert wieder — E-Mails werden wie gewohnt eingestuft."

@@ -132,8 +132,22 @@ func (c *Client) Classify(ctx context.Context, req llm.ClassifyRequest) (llm.Cla
 		// A read error here loses the explanation but not the status code, which
 		// is the part the operator cannot do without.
 		snippet, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		// 402 is Gemini's answer once the prepaid balance is spent: wrapped as
+		// ErrOutOfCredits so the scheduler can tell the owner rather than treat
+		// it like any other failed call.
+		var kind error
+		if resp.StatusCode == http.StatusPaymentRequired {
+			kind = llm.ErrOutOfCredits
+		}
 		if readErr != nil {
+			if kind != nil {
+				return llm.ClassifyResult{}, fmt.Errorf("gemini classify: http %d: %w", resp.StatusCode, kind)
+			}
 			return llm.ClassifyResult{}, fmt.Errorf("gemini classify: http %d", resp.StatusCode)
+		}
+		if kind != nil {
+			return llm.ClassifyResult{}, fmt.Errorf("gemini classify: http %d: %s: %w",
+				resp.StatusCode, strings.TrimSpace(string(snippet)), kind)
 		}
 		return llm.ClassifyResult{}, fmt.Errorf("gemini classify: http %d: %s",
 			resp.StatusCode, strings.TrimSpace(string(snippet)))

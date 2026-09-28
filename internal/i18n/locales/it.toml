@@ -293,3 +293,17 @@ other = "Riavvia il demone: {{.Command}}"
 
 [reauth_note_testing]
 other = "In modalità «Testing» l'accesso Gmail scade all'incirca ogni 7 giorni."
+
+# --- Classifier credits ------------------------------------------------------
+
+[credits_exhausted_title]
+other = "{{.Provider}}: crediti prepagati esauriti"
+
+[credits_exhausted_body]
+other = "Finché il saldo non viene ricaricato, le nuove email sono ordinate solo dalle regole integrate: alcune email importanti potrebbero non essere segnalate. Le menzioni dirette nelle caselle con focus continuano ad arrivare."
+
+[credits_top_up]
+other = "Ricarica il saldo:"
+
+[credits_restored]
+other = "{{.Provider}} funziona di nuovo: le email vengono classificate come di consueto."

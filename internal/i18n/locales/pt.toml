@@ -293,3 +293,17 @@ other = "Reinicia o daemon: {{.Command}}"
 
 [reauth_note_testing]
 other = "No modo «Testing», o acesso do Gmail expira aproximadamente a cada 7 dias."
+
+# --- Classifier credits ------------------------------------------------------
+
+[credits_exhausted_title]
+other = "{{.Provider}}: os créditos pré-pagos acabaram"
+
+[credits_exhausted_body]
+other = "Até o saldo ser recarregado, os novos e-mails são ordenados apenas pelas regras integradas, e alguns e-mails importantes podem não ser notificados. Menções diretas em caixas com foco continuam chegando."
+
+[credits_top_up]
+other = "Recarregar o saldo:"
+
+[credits_restored]
+other = "{{.Provider}} voltou a funcionar: os e-mails são classificados normalmente."

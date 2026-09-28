@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strings"
@@ -57,6 +58,10 @@ type Config struct {
 	// Printer renders operational alerts in the user's language; nil falls back
 	// to English.
 	Printer *i18n.Printer
+	// CreditAlert is told of every classification outcome, so it can alert the
+	// owner when the provider's balance runs out and again once it is back.
+	// Shared by all accounts' schedulers; nil disables it.
+	CreditAlert *CreditAlert
 
 	// Mechanical filtering layer (Stage 9).
 	RuleRepo      *repo.RuleRepo
@@ -436,7 +441,11 @@ func (s *Scheduler) processMessage(
 		if llmErr != nil {
 			s.cfg.Logger.Warn(fmt.Errorf("llm classify: %w", llmErr),
 				"account_id", s.cfg.AccountID, "uid", msg.UID)
+			if errors.Is(llmErr, llm.ErrOutOfCredits) {
+				s.cfg.CreditAlert.Failed(ctx)
+			}
 		} else {
+			s.cfg.CreditAlert.Succeeded(ctx)
 			llmClass := domain.Classification{
 				ID:           idx.GenerateID(),
 				EmailID:      e.ID,

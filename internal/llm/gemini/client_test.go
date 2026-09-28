@@ -152,3 +152,28 @@ func TestName(t *testing.T) {
 	assert.Equal(t, "gemini", New("k", "").Name())
 	var _ llm.Provider = New("k", "")
 }
+
+func TestClassify_402IsOutOfCredits(t *testing.T) {
+	// The exact body Gemini returned on a new project with no prepaid balance.
+	c, _, _ := serve(t, http.StatusPaymentRequired,
+		`{"error":{"code":402,"message":"Your prepayment credits are depleted. Please go to AI Studio `+
+			`at https://ai.studio/projects to manage your project and billing.","status":"FAILED_PRECONDITION"}}`)
+
+	_, err := c.Classify(context.Background(), testRequest())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llm.ErrOutOfCredits)
+	// The explanation survives the wrapping: the log still says what Google said.
+	assert.Contains(t, err.Error(), "prepayment credits are depleted")
+}
+
+func TestClassify_OtherErrorsAreNotOutOfCredits(t *testing.T) {
+	// A bad key or a quota burst is not a balance to top up; alerting on them
+	// would send the owner to the billing page for nothing.
+	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusTooManyRequests, 500} {
+		c, _, _ := serve(t, status, `{"error":{"message":"nope"}}`)
+		_, err := c.Classify(context.Background(), testRequest())
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, llm.ErrOutOfCredits, "status %d", status)
+	}
+}
