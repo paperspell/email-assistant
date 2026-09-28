@@ -408,7 +408,9 @@ func (s *Scheduler) processMessage(
 			Email: s.cfg.AccountEmail, Aliases: s.cfg.Aliases, Bots: s.cfg.BotHandles,
 		})
 		focusFacts = assessment.Facts
-		directed = assessment.Verdict == focus.Directed
+		// Only an explicit address guarantees a notification; a weak Directed
+		// (a person's comment on the owner's thread) stays the model's call.
+		directed = assessment.Verdict == focus.Directed && assessment.Strong
 		if assessment.Verdict == focus.NotDirected {
 			why := "out of focus: " + strings.Join(assessment.Facts, "; ")
 			if err := s.cfg.ClassificationRepo.Save(ctx, domain.Classification{

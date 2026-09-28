@@ -242,3 +242,21 @@ func TestFocusFloor_NotWithoutAFocus(t *testing.T) {
 
 	assert.Empty(t, n.sent)
 }
+
+func TestFocusFloor_NotForAWeakDirected(t *testing.T) {
+	// A person's comment on the owner's thread is Directed but weak: it tells
+	// the model someone wrote, not that the owner was asked anything. The
+	// model's "ignore" must stand — flooring it is exactly the noise the owner
+	// complained about.
+	msg := email.Message{
+		UID: 42, Subject: "Re: rssp | BUS-29301: Remove Viber schain node", Date: time.Now(),
+		FromEmail: "git@viber.com", FromName: "Eliyahu Shvalb (@eliyahu.shvalb)",
+		To:   []string{"aliaksei.novikau@viber.com"},
+		Body: "Eliyahu Shvalb commented: pipeline is green now.",
+		Notification: email.Notification{
+			Platform: "gitlab", Reason: "comment", Sender: "eliyahu.shvalb", Automated: true},
+	}
+	_, n := floorScheduler(t, msg, llm.ClassifyResult{Level: domain.LevelIgnore, Score: 10}, nil)
+
+	assert.Empty(t, n.sent)
+}
