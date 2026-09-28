@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -131,4 +132,131 @@ func TestFocus_NoFocusMeansNoGate(t *testing.T) {
 
 	require.Len(t, llmMock.requests, 1)
 	assert.Empty(t, llmMock.lastRequest().FocusFacts)
+}
+
+// floorScheduler is a focused work mailbox whose threshold is "important", with
+// a classifier that always returns the given verdict.
+func floorScheduler(
+	t *testing.T, msg email.Message, result llm.ClassifyResult, llmErr error,
+) (*Scheduler, *mockNotifier) {
+	t.Helper()
+	llmMock := &capturingLLMProvider{result: result}
+	sched, syncRepo := buildContentModeScheduler(t, msg, llmMock, "full_body")
+	sched.cfg.AccountEmail = "aliaksei.novikau@viber.com"
+	sched.cfg.Focus = "only mail addressed to me, or tickets and documents that mention me"
+	sched.cfg.Aliases = []string{"Aliaksei Novikau", "aliaksei.novikau"}
+	sched.cfg.MinImportance = domain.LevelImportant
+	if llmErr != nil {
+		sched.cfg.LLMProvider = &mockLLMProvider{err: llmErr}
+	}
+	n := &mockNotifier{}
+	sched.cfg.Notifier = n
+	pollOnce(t, sched, syncRepo, msg.UID-1)
+	return sched, n
+}
+
+// jiraMentionFromTheComparison is uid 12631 from the model comparison: Gemini's
+// own summary said "Amit mentioned you", and it scored the message "ignore".
+func jiraMentionFromTheComparison() email.Message {
+	return email.Message{
+		UID: 40, Subject: "[JIRA] Amit Epstein mentioned you on MON-10307", Date: time.Now(),
+		FromEmail: "jira@rakuten-viber.atlassian.net", FromName: "Amit Epstein (Jira)",
+		To:           []string{"aliaksei.novikau@viber.com"},
+		Body:         "Amit Epstein mentioned you on MON-10307: this became urgent and blocks the start of testing.",
+		Notification: email.Notification{Automated: true},
+	}
+}
+
+func TestFocusFloor_DirectedMailIsNotifiedWhateverTheModelSays(t *testing.T) {
+	sched, n := floorScheduler(t, jiraMentionFromTheComparison(),
+		llm.ClassifyResult{Level: domain.LevelIgnore, Score: 15, Summary: "Amit mentioned you on MON-10307."}, nil)
+
+	require.Len(t, n.sent, 1, "a direct mention must reach Telegram even when the model says ignore")
+	e, err := sched.cfg.EmailRepo.GetByAccountAndUID(context.Background(), "test@example.com", 40)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusNotified, e.Status)
+
+	all, err := sched.cfg.ClassificationRepo.GetAllByEmailID(context.Background(), e.ID)
+	require.NoError(t, err)
+	var model, floor *domain.Classification
+	for i := range all {
+		switch {
+		case strings.HasPrefix(all[i].Source, domain.SourceLLM):
+			model = &all[i]
+		case all[i].Source == domain.SourceFocus:
+			floor = &all[i]
+		}
+	}
+	// Both are kept: what the model said, and why it was overruled.
+	require.NotNil(t, model, "the model's own verdict is kept for audit")
+	assert.Equal(t, domain.LevelIgnore, model.Level)
+	require.NotNil(t, floor, "the floor is recorded as its own classification")
+	assert.Equal(t, domain.LevelImportant, floor.Level)
+	assert.Equal(t, 70, floor.Score)
+	assert.Equal(t, "Amit mentioned you on MON-10307.", floor.Summary, "the model still writes the summary")
+	assert.Contains(t, strings.Join(floor.Reason, " "), "directed at the owner")
+}
+
+func TestFocusFloor_LeavesAHigherVerdictAlone(t *testing.T) {
+	sched, n := floorScheduler(t, jiraMentionFromTheComparison(),
+		llm.ClassifyResult{Level: domain.LevelCritical, Score: 92, Summary: "Urgent."}, nil)
+
+	require.Len(t, n.sent, 1)
+	e, _ := sched.cfg.EmailRepo.GetByAccountAndUID(context.Background(), "test@example.com", 40)
+	all, _ := sched.cfg.ClassificationRepo.GetAllByEmailID(context.Background(), e.ID)
+	for _, c := range all {
+		assert.NotEqual(t, domain.SourceFocus, c.Source, "a floor must never lower or rewrite a higher verdict")
+	}
+}
+
+func TestFocusFloor_OnlyForDirectedMail(t *testing.T) {
+	// A person's mail with the owner in To is "Unknown" to the header layer —
+	// a fact for the model, not a verdict. The model's "ignore" stands.
+	msg := email.Message{
+		UID: 41, Subject: "Accepted: Floor price agent - exploration", Date: time.Now(),
+		FromEmail: "ido.shirat@viber.com", To: []string{"aliaksei.novikau@viber.com"},
+	}
+	_, n := floorScheduler(t, msg, llm.ClassifyResult{Level: domain.LevelIgnore, Score: 15}, nil)
+
+	assert.Empty(t, n.sent)
+}
+
+func TestFocusFloor_AppliesWhenTheModelIsDown(t *testing.T) {
+	// A classifier outage must not silence a direct mention: the rule-based
+	// fallback is floored too.
+	_, n := floorScheduler(t, jiraMentionFromTheComparison(), llm.ClassifyResult{}, errors.New("provider down"))
+
+	assert.Len(t, n.sent, 1)
+}
+
+func TestFocusFloor_NotWithoutAFocus(t *testing.T) {
+	// An unfocused mailbox has no notion of "addressed to me": its model's
+	// verdict is final, exactly as before this feature.
+	llmMock := &capturingLLMProvider{result: llm.ClassifyResult{Level: domain.LevelIgnore, Score: 15}}
+	sched, syncRepo := buildContentModeScheduler(t, jiraMentionFromTheComparison(), llmMock, "full_body")
+	sched.cfg.MinImportance = domain.LevelImportant
+	n := &mockNotifier{}
+	sched.cfg.Notifier = n
+
+	pollOnce(t, sched, syncRepo, 39)
+
+	assert.Empty(t, n.sent)
+}
+
+func TestFocusFloor_NotForAWeakDirected(t *testing.T) {
+	// A person's comment on the owner's thread is Directed but weak: it tells
+	// the model someone wrote, not that the owner was asked anything. The
+	// model's "ignore" must stand — flooring it is exactly the noise the owner
+	// complained about.
+	msg := email.Message{
+		UID: 42, Subject: "Re: rssp | BUS-29301: Remove Viber schain node", Date: time.Now(),
+		FromEmail: "git@viber.com", FromName: "Eliyahu Shvalb (@eliyahu.shvalb)",
+		To:   []string{"aliaksei.novikau@viber.com"},
+		Body: "Eliyahu Shvalb commented: pipeline is green now.",
+		Notification: email.Notification{
+			Platform: "gitlab", Reason: "comment", Sender: "eliyahu.shvalb", Automated: true},
+	}
+	_, n := floorScheduler(t, msg, llm.ClassifyResult{Level: domain.LevelIgnore, Score: 10}, nil)
+
+	assert.Empty(t, n.sent)
 }

@@ -7,6 +7,7 @@ package focus
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -31,6 +32,12 @@ const (
 // classifier's prompt and the owner reading "Details".
 type Assessment struct {
 	Verdict Verdict
+	// Strong is set on a Directed verdict that rests on an explicit address —
+	// an @-mention, a tool saying "mentioned you", the owner added as reviewer
+	// or assignee, a GitHub review request. Only a strong verdict guarantees a
+	// notification; a weak one (a person's comment on the owner's thread) is a
+	// hint the classifier weighs.
+	Strong bool
 	// Facts are what was established, e.g. "GitHub reason: review_requested".
 	// Empty when nothing notable was found.
 	Facts []string
@@ -113,12 +120,30 @@ var directAddress = []string{
 // Assess derives what can be known without reading the message as prose.
 func Assess(msg email.Message, owner Owner) Assessment {
 	var a Assessment
-	mentioned := mentionsOwner(msg, owner)
-	if mentioned {
-		a.Facts = append(a.Facts, "owner is mentioned by name or handle in the subject or body")
-	} else if phrase := addressedInSecondPerson(msg); phrase != "" {
-		mentioned = true
+	// An explicit address is strong evidence; the owner's name merely
+	// appearing is not. Names sit in author and reviewer footers, calendar
+	// organiser lines and "Aliaksei did X" activity reports far more often than
+	// in someone asking the owner something — on real work mail, a plain name
+	// match was right for five messages and wrong for eight.
+	strong := false
+	if phrase := addressedInSecondPerson(msg); phrase != "" {
+		strong = true
 		a.Facts = append(a.Facts, fmt.Sprintf("the notification addresses the owner directly (%q)", phrase))
+	}
+	if atMentionsOwner(msg, owner) {
+		strong = true
+		a.Facts = append(a.Facts, "owner is @-mentioned")
+	}
+	if role := ownerGivenRole(msg, owner); role != "" {
+		strong = true
+		a.Facts = append(a.Facts, "owner "+role)
+	}
+	if !strong && mentionsOwner(msg, owner) {
+		a.Facts = append(a.Facts, "owner's name appears in the text, without being addressed")
+	}
+	directed := func() Verdict {
+		a.Strong = true
+		return Directed
 	}
 
 	n := msg.Notification
@@ -137,8 +162,8 @@ func Assess(msg email.Message, owner Owner) Assessment {
 			a.Facts = append(a.Facts, "acting user: "+n.Sender)
 		}
 		switch {
-		case mentioned:
-			a.Verdict = Directed
+		case strong:
+			a.Verdict = directed()
 		case n.Reason == "review_requested" && msg.InReplyTo != "":
 			// GitHub keeps this reason on every later message in a thread the
 			// owner was asked to review. The request itself is the first
@@ -146,7 +171,7 @@ func Assess(msg email.Message, owner Owner) Assessment {
 			// classifier to weigh.
 			a.Facts = append(a.Facts, "follow-up in a thread the owner was asked to review")
 		case githubDirected[n.Reason]:
-			a.Verdict = Directed
+			a.Verdict = directed()
 		case githubComments[n.Reason]:
 			a.Verdict = commentVerdict(&a, n.Sender, owner)
 		case githubUndirected[n.Reason]:
@@ -161,8 +186,8 @@ func Assess(msg email.Message, owner Owner) Assessment {
 			a.Facts = append(a.Facts, "GitLab "+n.Reason)
 		}
 		switch {
-		case mentioned:
-			a.Verdict = Directed
+		case strong:
+			a.Verdict = directed()
 		case n.Reason == "activity":
 			// A push, approval, merge or resolved thread. GitLab sends these to
 			// every participant; none of them is a person addressing the owner.
@@ -173,8 +198,8 @@ func Assess(msg email.Message, owner Owner) Assessment {
 		return a
 	}
 
-	if mentioned {
-		a.Verdict = Directed
+	if strong {
+		a.Verdict = directed()
 		return a
 	}
 	if n.Automated {
@@ -191,6 +216,44 @@ func Assess(msg email.Message, owner Owner) Assessment {
 		a.Facts = append(a.Facts, "owner's address is only in Cc")
 	}
 	return a
+}
+
+// atMentionsOwner reports whether an alias appears as an @-mention — the form
+// Jira, Confluence, GitLab and Slack render when a person tags someone.
+func atMentionsOwner(msg email.Message, owner Owner) bool {
+	text := strings.ToLower(msg.Subject + "\n" + msg.Body)
+	for _, alias := range owner.Aliases {
+		alias = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(alias, "@")))
+		if alias != "" && hasWord(text, "@"+alias) {
+			return true
+		}
+	}
+	return false
+}
+
+// ownerGivenRole reports how a tool, in the third person, says the owner was
+// given something to do — "Aliaksei Novikau were added as reviewers",
+// "requested review from Aliaksei Novikau", "assigned to Aliaksei Novikau" —
+// or "". A footer listing "Assignee: Aliaksei Novikau" is not this: it
+// describes the thread rather than reporting an action towards the owner.
+func ownerGivenRole(msg email.Message, owner Owner) string {
+	text := strings.ToLower(strings.Join(strings.Fields(msg.Subject+"\n"+msg.Body), " "))
+	for _, alias := range owner.Aliases {
+		alias = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(alias, "@")))
+		if alias == "" {
+			continue
+		}
+		q := regexp.QuoteMeta(alias)
+		switch {
+		case regexp.MustCompile(q + `[^.]{0,40}\badded as (?:an? )?reviewers?\b`).MatchString(text),
+			regexp.MustCompile(`\breview from ` + q).MatchString(text):
+			return "was asked for a review"
+		case regexp.MustCompile(q + `[^.]{0,40}\badded as (?:an? )?assignees?\b`).MatchString(text),
+			regexp.MustCompile(`\bassigned (?:\S+ )?to ` + q).MatchString(text):
+			return "was assigned"
+		}
+	}
+	return ""
 }
 
 // addressedInSecondPerson returns the direct-address phrase found in the

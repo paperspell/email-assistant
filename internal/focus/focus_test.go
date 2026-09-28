@@ -209,3 +209,137 @@ func joined(s []string) string {
 	}
 	return out
 }
+
+// Every case is one of the 13 work messages the header layer ruled Directed in
+// the classifier comparison, reduced to the text around the owner's name. Five
+// really addressed the owner; eight only named them — and a plain name match
+// had turned all thirteen into guaranteed notifications.
+func TestAssess_StrongOnlyForAnExplicitAddress(t *testing.T) {
+	o := Owner{
+		Email:   "aliaksei.novikau@viber.com",
+		Aliases: []string{"Aliaksei Novikau", "aliaksei.novikau"},
+		Bots:    []string{"aicode"},
+	}
+	gitlab := func(reason, sender string) email.Notification {
+		return email.Notification{Platform: "gitlab", Reason: reason, Sender: sender, Automated: true}
+	}
+	tests := []struct {
+		name       string
+		msg        email.Message
+		wantVerd   Verdict
+		wantStrong bool
+		fact       string
+	}{
+		// --- addressed: must be strong ---
+		{
+			name: "Jira @-mention in the comment",
+			msg: email.Message{
+				Subject: "[JIRA] Amit Epstein mentioned you on BUS-29572",
+				Body:    "@Aliaksei Novikau You summarized my notes better than claude :laughing:",
+			},
+			wantVerd: Directed, wantStrong: true, fact: "@-mentioned",
+		},
+		{
+			name: "Confluence says mentioned you, never the name",
+			msg: email.Message{
+				Subject: "[Confluence] Hanna Shmihelskaya mentioned you in Sep 28 - 0.156.3_ADSE",
+				Body:    "Hanna Shmihelskaya mentioned you on a page.",
+			},
+			wantVerd: Directed, wantStrong: true, fact: "mentioned you",
+		},
+		{
+			name: "GitLab: added as a reviewer — activity, but addressed",
+			msg: email.Message{
+				Subject:      "Re: rssp | BUS-29627: Remove schain from Adview, admixer and Algorix",
+				Body:         "The Commenter and Aliaksei Novikau were added as reviewers. -- View it on GitLab",
+				Notification: gitlab("activity", "andrei.ramanchyk"),
+			},
+			wantVerd: Directed, wantStrong: true, fact: "asked for a review",
+		},
+		// --- only named: must not be strong ---
+		{
+			name: "GitLab push: the name is in the author/reviewer footer",
+			msg: email.Message{
+				Subject: "Re: rssp | BUS-28098: Floor agent integration test suite (!1507)",
+				Body: "Andrei Ramanchyk pushed new commits. Branches: BUS-28098 to release " +
+					"Author: Aliaksei Novikau Assignee: Aliaksei Novikau Reviewers: Eliyahu Shvalb, Andrei Ramanchyk",
+				Notification: gitlab("activity", "andrei.ramanchyk"),
+			},
+			// A footer must not rescue a push from the cut, as a plain name did.
+			wantVerd: NotDirected, fact: "without being addressed",
+		},
+		{
+			name: "calendar reply to the owner's own meeting",
+			msg: email.Message{
+				Subject:   "Accepted: Floor price agent - exploration @ Tue Sep 29, 2026 (Aliaksei Novikau)",
+				FromEmail: "ido.shirat@viber.com",
+				To:        []string{"aliaksei.novikau@viber.com"},
+				Body:      "BEGIN:VCALENDAR ORGANIZER;CN=Aliaksei Novikau:mailto:aliaksei.novikau@viber.com",
+			},
+			wantVerd: Unknown, fact: "without being addressed",
+		},
+		{
+			name: "Jira reports the owner's own action",
+			msg: email.Message{
+				Subject: "[JIRA] (MON-10308) VX - Create narrow bid histogram table for the floor agent",
+				Body: "Aliaksei Novikau [https://lab.vibelab.net/aliaksei.novikau] " +
+					"mentioned this issue in a merge request",
+				Notification: email.Notification{Automated: true},
+			},
+			wantVerd: Unknown, fact: "without being addressed",
+		},
+		{
+			name: "GitLab footer 'Assignee:' is not 'assigned to'",
+			msg: email.Message{
+				Subject:      "Re: rssp | DOC-00000 Floor index artifact data contract",
+				Body:         "Author: Aliaksei Novikau Assignee: Aliaksei Novikau Reviewer: The Commenter",
+				Notification: gitlab("activity", "andrei.ramanchyk"),
+			},
+			wantVerd: NotDirected,
+		},
+		{
+			name: "a person's comment on my PR: directed, but the model's call",
+			msg: email.Message{
+				Subject: "Re: [rakuten-viber-ads/rssp.gitops] Release VX Engine v0.156.3 (PR #662)",
+				Notification: email.Notification{
+					Platform: "github", Reason: "author", Sender: "ts-pavlo-yeremenko_rakuten", Automated: true},
+			},
+			wantVerd: Directed, wantStrong: false, fact: "comment by a person",
+		},
+		// --- third-person assignment phrasings ---
+		{
+			name: "requested review from the owner",
+			msg: email.Message{
+				Body:         "Eliyahu Shvalb requested review from Aliaksei Novikau",
+				Notification: gitlab("activity", "eliyahu.shvalb"),
+			},
+			wantVerd: Directed, wantStrong: true, fact: "asked for a review",
+		},
+		{
+			name: "assigned to the owner",
+			msg: email.Message{
+				Body:         "Andrei Ramanchyk assigned MON-10311 to Aliaksei Novikau",
+				Notification: email.Notification{Automated: true},
+			},
+			wantVerd: Directed, wantStrong: true, fact: "was assigned",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Assess(tt.msg, o)
+			assert.Equal(t, tt.wantVerd, got.Verdict, "facts: %v", got.Facts)
+			assert.Equal(t, tt.wantStrong, got.Strong, "facts: %v", got.Facts)
+			if tt.fact != "" {
+				assert.Contains(t, joined(got.Facts), tt.fact)
+			}
+		})
+	}
+}
+
+func TestAtMentionsOwner_NotAnEmailAddress(t *testing.T) {
+	// "aliaksei.novikau@viber.com" contains the alias followed by @, not
+	// preceded by it — an address in a header line is not a mention.
+	o := Owner{Aliases: []string{"aliaksei.novikau"}}
+	assert.False(t, atMentionsOwner(email.Message{Body: "mailto:aliaksei.novikau@viber.com"}, o))
+	assert.True(t, atMentionsOwner(email.Message{Body: "cc @aliaksei.novikau please look"}, o))
+}

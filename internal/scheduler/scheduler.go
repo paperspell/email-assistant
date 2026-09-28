@@ -402,11 +402,15 @@ func (s *Scheduler) processMessage(
 	// mailbox's scope by construction, and saying so here — with the fact
 	// that decided it — is both cheaper and more auditable than a summary.
 	var focusFacts []string
+	directed := false
 	if s.cfg.Focus != "" {
 		assessment := focus.Assess(msg, focus.Owner{
 			Email: s.cfg.AccountEmail, Aliases: s.cfg.Aliases, Bots: s.cfg.BotHandles,
 		})
 		focusFacts = assessment.Facts
+		// Only an explicit address guarantees a notification; a weak Directed
+		// (a person's comment on the owner's thread) stays the model's call.
+		directed = assessment.Verdict == focus.Directed && assessment.Strong
 		if assessment.Verdict == focus.NotDirected {
 			why := "out of focus: " + strings.Join(assessment.Facts, "; ")
 			if err := s.cfg.ClassificationRepo.Save(ctx, domain.Classification{
@@ -466,6 +470,35 @@ func (s *Scheduler) processMessage(
 			classification = llmClass
 			llmDecided = true
 		}
+	}
+
+	// 3b. Focus floor: mail the headers show is addressed to the owner is
+	// notified whatever the classifier concluded. The classifier still writes
+	// the summary, but it does not get to decide that someone asking the owner
+	// something is out of scope. Measured, not hypothetical: on real work mail a
+	// model summarised "Amit mentioned you on MON-10307" correctly and scored it
+	// "ignore". Mechanical filter rules still win — they ran in step 1 — while
+	// natural-language ignore clauses, which only advise the model, do not
+	// outrank a direct address.
+	if directed && levelRank(classification.Level) < levelRank(domain.LevelImportant) {
+		floored := classification
+		floored.ID = idx.GenerateID()
+		floored.Level = domain.LevelImportant
+		if floored.Score < focusFloorScore {
+			floored.Score = focusFloorScore
+		}
+		floored.Reason = append([]string{"directed at the owner: " + strings.Join(focusFacts, "; ")},
+			classification.Reason...)
+		floored.Source = domain.SourceFocus
+		floored.ClassifiedAt = timex.NowUTC()
+		if err := s.cfg.ClassificationRepo.Save(ctx, floored); err != nil {
+			return err
+		}
+		s.cfg.Logger.Info("focus floor raised the verdict",
+			"account_id", s.cfg.AccountID, "uid", msg.UID,
+			"from_level", string(classification.Level), "from_score", classification.Score,
+			"facts", strings.Join(focusFacts, "; "))
+		classification = floored
 	}
 
 	// 4. Final notification decision uses the LLM result (or rule-based if LLM was skipped/failed).
@@ -553,6 +586,10 @@ func (s *Scheduler) ignoreEmail(
 
 // levelRank orders importance levels for threshold comparisons. Unknown levels
 // (including the empty string) rank lowest.
+// focusFloorScore is the score a floored verdict is raised to: the bottom of
+// the "important" band in the classifier's scoring guide.
+const focusFloorScore = 70
+
 func levelRank(level domain.ImportanceLevel) int {
 	switch level {
 	case domain.LevelMaybe:
