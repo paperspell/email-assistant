@@ -114,10 +114,23 @@ func (c LLMConfig) modelFor(provider string) string {
 	case "jev":
 		m = c.JevModel
 	}
-	if m != "" {
+	if m != "" || !LegacyModelApplies(provider) {
 		return m
 	}
 	return c.Model
+}
+
+// LegacyModelApplies reports whether the legacy llm.model can be meant for
+// provider: only for the providers that existed while it was the one model
+// setting. Jev came after the per-provider keys, and a Claude id inherited
+// from llm.model would fail every call to it.
+func LegacyModelApplies(provider string) bool {
+	switch provider {
+	case "anthropic", "openai", "gemini":
+		return true
+	default:
+		return false
+	}
 }
 
 // ContentConfig controls what content is sent to the LLM.

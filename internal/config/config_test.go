@@ -347,3 +347,23 @@ func TestLLMConfig_JevRequiresKey(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), KeyLLMJevAPIKey)
 }
+
+func TestLLMConfig_LegacyModelIsNotInheritedByJev(t *testing.T) {
+	// Jev came after the per-provider keys: a legacy Claude id sent to it
+	// would fail every call, so an unset llm.jev.model means Jev's default.
+	cfg := loadLLM(t, map[string]string{
+		KeyLLMProvider:  "jev",
+		KeyLLMJevAPIKey: "k",
+		KeyLLMModel:     "claude-sonnet-5",
+	})
+
+	assert.Empty(t, cfg.LLM.Model)
+}
+
+func TestLegacyModelApplies(t *testing.T) {
+	for _, p := range []string{"anthropic", "openai", "gemini"} {
+		assert.True(t, LegacyModelApplies(p), p)
+	}
+	assert.False(t, LegacyModelApplies("jev"))
+	assert.False(t, LegacyModelApplies(""))
+}
