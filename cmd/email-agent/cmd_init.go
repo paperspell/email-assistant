@@ -386,6 +386,8 @@ func providerModelKey(provider string) string {
 		return config.KeyLLMOpenAIModel
 	case "gemini":
 		return config.KeyLLMGeminiModel
+	case "jev":
+		return config.KeyLLMJevModel
 	default:
 		return config.KeyLLMAnthropicModel
 	}
@@ -399,6 +401,7 @@ func configuredProviders(current map[string]string) string {
 		{"anthropic", config.KeyLLMAnthropicAPIKey},
 		{"openai", config.KeyLLMOpenAIAPIKey},
 		{"gemini", config.KeyLLMGeminiAPIKey},
+		{"jev", config.KeyLLMJevAPIKey},
 	} {
 		if current[p.key] != "" {
 			have = append(have, p.name)
@@ -470,7 +473,7 @@ func configureLLM(
 		fmt.Println("  Already configured: " + configured)
 	}
 
-	provider := promptText(sc, "  Provider (anthropic/openai/gemini)", current[config.KeyLLMProvider])
+	provider := promptText(sc, "  Provider (anthropic/openai/gemini/jev)", current[config.KeyLLMProvider])
 	provider = strings.ToLower(strings.TrimSpace(provider))
 
 	settings := map[string]string{config.KeyLLMProvider: provider}
@@ -505,8 +508,19 @@ func configureLLM(
 		if apiKey != "" {
 			settings[config.KeyLLMGeminiAPIKey] = apiKey
 		}
+	case "jev":
+		// Said before the key is asked for, so the owner learns what they
+		// give up while they can still pick another provider.
+		fmt.Println("  Jev decides without writing: notifications and the digest carry no summary.")
+		apiKey, err := promptPassword("  TypeSafe API key (Enter to keep unchanged)", sc)
+		if err != nil {
+			return fmt.Errorf("read api key: %w", err)
+		}
+		if apiKey != "" {
+			settings[config.KeyLLMJevAPIKey] = apiKey
+		}
 	default:
-		return fmt.Errorf("unknown provider %q (valid: anthropic, openai, gemini)", provider)
+		return fmt.Errorf("unknown provider %q (valid: anthropic, openai, gemini, jev)", provider)
 	}
 
 	modelKey := providerModelKey(provider)

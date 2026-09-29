@@ -325,3 +325,25 @@ func TestLLMConfig_PerProviderModelWinsOverLegacy(t *testing.T) {
 
 	assert.Equal(t, "gpt-5.6-terra", cfg.LLM.Model)
 }
+
+func TestLLMConfig_Jev(t *testing.T) {
+	cfg := loadLLM(t, map[string]string{
+		KeyLLMProvider:  "jev",
+		KeyLLMJevAPIKey: "k",
+		KeyLLMJevModel:  "jev-latest",
+	})
+
+	assert.Equal(t, "k", cfg.LLM.JevAPIKey)
+	assert.Equal(t, "jev-latest", cfg.LLM.Model)
+}
+
+func TestLLMConfig_JevRequiresKey(t *testing.T) {
+	s := validSettings()
+	s[KeyLLMProvider] = "jev"
+	sr, ar := setupRepos(t, s, []domain.Account{validAccount()})
+
+	_, err := Load(context.Background(), sr, ar)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), KeyLLMJevAPIKey)
+}

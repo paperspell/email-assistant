@@ -36,6 +36,7 @@ const (
 	KeyLLMAnthropicAPIKey = "llm.anthropic.api_key"
 	KeyLLMOpenAIAPIKey    = "llm.openai.api_key"
 	KeyLLMGeminiAPIKey    = "llm.gemini.api_key"
+	KeyLLMJevAPIKey       = "llm.jev.api_key"
 	// KeyLLMModel is the legacy, provider-agnostic model setting. It is still
 	// read as a fallback so an existing install keeps working, but the wizard
 	// writes the per-provider keys below: switching providers must not require
@@ -45,6 +46,7 @@ const (
 	KeyLLMAnthropicModel      = "llm.anthropic.model"
 	KeyLLMOpenAIModel         = "llm.openai.model"
 	KeyLLMGeminiModel         = "llm.gemini.model"
+	KeyLLMJevModel            = "llm.jev.model"
 	KeyLLMScoreDivergenceWarn = "llm.score_divergence_warn"
 
 	KeyContentMode = "content.mode"

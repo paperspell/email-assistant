@@ -37,6 +37,12 @@ func SuggestedModels(provider string) []ModelChoice {
 			{ID: "gemini-3.8-flash", Hint: "highest quality among the stable Flash models"},
 			{ID: "gemini-3.5-flash-lite", Hint: "cheapest and fastest, misses nuance more often"},
 		}
+	case "jev":
+		// One model, always the current one. Jev decides without writing, so
+		// its verdicts carry no summary whatever model is picked.
+		return []ModelChoice{
+			{ID: "jev-latest", Hint: "the current Jev; decides only, notifications carry no summary"},
+		}
 	default:
 		return nil
 	}
