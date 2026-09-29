@@ -527,7 +527,7 @@ func configureLLM(
 	// Fall back to the legacy shared setting so an install that has only
 	// llm.model sees its current model preselected rather than a blank prompt.
 	currentModel := current[modelKey]
-	if currentModel == "" {
+	if currentModel == "" && config.LegacyModelApplies(provider) {
 		currentModel = current[config.KeyLLMModel]
 	}
 	model, err := promptModel(sc, provider, currentModel)
