@@ -1,16 +1,29 @@
 # Email Agent
 
-A local-first email monitoring daemon written in Go.
+A self-hosted email agent written in Go. It watches your inboxes and decides, mail by mail, what deserves
+your attention now: important mail reaches your Telegram within minutes, everything else waits for an
+evening digest.
 
-Monitors your email accounts, detects new incoming emails, and sends Telegram notifications — running entirely on your machine with no cloud backend required.
+It runs on your own machine or server, with no backend of its own: your mail goes only to the model
+provider you pick and to your Telegram.
 
 ## Features
 
-- Monitors IMAP email accounts
-- Sends Telegram notifications for new emails
-- Stores all state locally in SQLite
-- Single binary, no external services required
-- Privacy-first: email bodies not stored by default
+- **Triage, not forwarding.** Your own rules first, then a model sorts each email into critical, important,
+  maybe or ignore, with a category and a short summary
+- **Telegram notifications** for what matters, with buttons to mark it handled, open details, or teach the
+  agent to ignore that sender, domain, list or kind of subject
+- **Daily digest** of everything that was not worth a ping, marked read in one tap
+- **Focus mode** for a busy work inbox: only mail addressed to you or mentioning you — including GitHub and
+  GitLab review requests, mentions, and people's comments on your pull requests
+- **Plain-language ignore rules**, e.g. "promotions unless they concern an order I placed"
+- **Your choice of model:** Anthropic, OpenAI, Gemini or Jev (TypeSafe), and of how much of the body it may
+  see — headers only, redacted, or full
+- **Several mailboxes**, IMAP with a password or Google OAuth; each can report to its own Telegram chat, so
+  one installation can serve friends or family
+- **Bot messages and summaries in 12 languages**
+- **Encrypted local storage** (SQLite with Adiantum); email bodies are not stored by default
+- A Telegram alert when Gemini runs out of prepaid credits
 
 ## Requirements
 
@@ -68,7 +81,7 @@ On headless Linux servers where no keychain is available, the wizard will print 
 email-agent run
 
 # Update a setting
-email-agent config set account.poll_interval 2m
+email-agent config set poll.default_interval 2m
 email-agent config set log.level debug
 
 # Override database path
