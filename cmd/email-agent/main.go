@@ -48,12 +48,19 @@ func main() {
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to database file (default: ~/.email-agent/email-agent.db)")
 
+	// Ctrl+C ends an interactive command at once; only the daemon handles
+	// signals itself, to shut down gracefully.
+	releaseInterrupt := exitOnInterrupt()
+
 	var localDev bool
 	runCmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start the email monitoring daemon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDaemon(cmd.Context(), resolveDBPath(dbPath), localDev)
+			releaseInterrupt()
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+			return runDaemon(ctx, resolveDBPath(dbPath), localDev)
 		},
 	}
 	runCmd.Flags().BoolVar(&localDev, "local-dev", false,
@@ -73,11 +80,7 @@ func main() {
 		newRulesCmd(&dbPath), newClausesCmd(&dbPath), newDigestCmd(&dbPath), newServiceCmd(),
 	)
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-
-	err := root.ExecuteContext(ctx)
-	stop()
-	if err != nil {
+	if err := root.ExecuteContext(context.Background()); err != nil {
 		os.Exit(1)
 	}
 }
