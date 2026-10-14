@@ -291,11 +291,12 @@ other = "Wykonaj {{.Command}}"
 [reauth_step_consent]
 other = "Odpowiedz y na pytanie „Re-authorize with Google now?\" i potwierdź dostęp w przeglądarce."
 
-[reauth_step_restart]
-other = "Uruchom ponownie demona: {{.Command}}"
 
 [reauth_note_testing]
 other = "W trybie „Testing\" dostęp Gmaila wygasa mniej więcej co 7 dni."
+
+[reauth_restored]
+other = "Dostęp do {{.Account}} przywrócony — znów sprawdzam pocztę."
 
 # --- Classifier credits ------------------------------------------------------
 

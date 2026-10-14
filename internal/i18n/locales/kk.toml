@@ -285,11 +285,12 @@ other = "{{.Command}} командасын орындаңыз"
 [reauth_step_consent]
 other = "«Re-authorize with Google now?» сұрағына y деп жауап беріп, браузерде рұқсатты растаңыз."
 
-[reauth_step_restart]
-other = "Демонды қайта іске қосыңыз: {{.Command}}"
 
 [reauth_note_testing]
 other = "«Testing» режимінде Gmail рұқсаты шамамен 7 күн сайын бітеді."
+
+[reauth_restored]
+other = "{{.Account}} поштасына рұқсат қалпына келді — поштаны қайта тексеремін."
 
 # --- Classifier credits ------------------------------------------------------
 
