@@ -291,11 +291,12 @@ other = "הריצו {{.Command}}"
 [reauth_step_consent]
 other = "השיבו y לשאלה \"Re-authorize with Google now?\" ואשרו את הגישה בדפדפן."
 
-[reauth_step_restart]
-other = "הפעילו מחדש את הדימון: {{.Command}}"
 
 [reauth_note_testing]
 other = "במצב \"Testing\" ההרשאה של Gmail פגה בערך כל 7 ימים."
+
+[reauth_restored]
+other = "הגישה ל-{{.Account}} שוחזרה — בודק שוב את הדואר."
 
 # --- Classifier credits ------------------------------------------------------
 

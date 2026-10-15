@@ -288,11 +288,12 @@ other = "Executa {{.Command}}"
 [reauth_step_consent]
 other = "Responde y a «Re-authorize with Google now?» e confirma o acesso no navegador."
 
-[reauth_step_restart]
-other = "Reinicia o daemon: {{.Command}}"
 
 [reauth_note_testing]
 other = "No modo «Testing», o acesso do Gmail expira aproximadamente a cada 7 dias."
+
+[reauth_restored]
+other = "Acesso a {{.Account}} restabelecido — voltei a verificar o correio."
 
 # --- Classifier credits ------------------------------------------------------
 

@@ -290,11 +290,12 @@ other = "Run {{.Command}}"
 [reauth_step_consent]
 other = "Answer y to \"Re-authorize with Google now?\" and complete the Google consent in the browser."
 
-[reauth_step_restart]
-other = "Restart the daemon: {{.Command}}"
 
 [reauth_note_testing]
 other = "Gmail in \"Testing\" mode expires this roughly every 7 days."
+
+[reauth_restored]
+other = "Access to {{.Account}} is restored — checking mail again."
 
 # --- Classifier credits ------------------------------------------------------
 

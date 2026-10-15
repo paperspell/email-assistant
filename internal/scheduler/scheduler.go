@@ -168,8 +168,26 @@ func (s *Scheduler) pollWithBackoff(ctx context.Context) {
 		s.alertReauthIfNeeded(ctx, err)
 		return
 	}
-	// A successful poll clears the re-auth state so a future expiry alerts again.
+	s.reauthRecovered(ctx)
+}
+
+// reauthRecovered runs after every successful poll. If the owner was told the
+// mailbox's sign-in expired, this poll proves they re-authorized — the token
+// source reads the new token from storage, so no restart was needed — and the
+// owner is told so once. Clearing the state lets a later expiry alert again.
+func (s *Scheduler) reauthRecovered(ctx context.Context) {
+	if !s.reauthAlerted {
+		return
+	}
 	s.reauthAlerted = false
+	if s.cfg.Alerter == nil {
+		return
+	}
+	text := "✅ " + html.EscapeString(s.cfg.Printer.T("reauth_restored", "Account", s.accountLabel()))
+	if err := s.cfg.Alerter.SendAlert(ctx, text); err != nil {
+		// Not retried: the mailbox works again, which the next mail shows anyway.
+		s.cfg.Logger.Warn(fmt.Errorf("send re-auth restored notice: %w", err), "account_id", s.cfg.AccountID)
+	}
 }
 
 // alertReauthIfNeeded sends a one-time Telegram alert when err indicates the
@@ -191,22 +209,29 @@ func (s *Scheduler) alertReauthIfNeeded(ctx context.Context, err error) {
 // reauthAlertText builds the HTML-formatted re-authorization instructions.
 func (s *Scheduler) reauthAlertText() string {
 	p := s.cfg.Printer
-	label := s.cfg.AccountEmail
-	if s.cfg.AccountName != "" && s.cfg.AccountName != s.cfg.AccountEmail {
-		label = fmt.Sprintf("%s (%s)", s.cfg.AccountName, s.cfg.AccountEmail)
-	}
+	label := s.accountLabel()
 	// Sent with HTML parse mode: catalog strings are authored here, only the
 	// account values are escaped. The commands stay untranslated — they are typed
 	// verbatim into a shell.
 	editCmd := "<code>email-agent account edit " + html.EscapeString(s.cfg.AccountEmail) + "</code>"
-	return "⚠️ <b>" + p.T("reauth_title") + "</b>\n\n" +
+	// The title carries its own ⚠️ in every catalog. There is no restart step:
+	// the token source reads the new token from storage on the next poll.
+	return "<b>" + p.T("reauth_title") + "</b>\n\n" +
 		p.T("field_account") + ": " + html.EscapeString(label) + "\n\n" +
 		p.T("reauth_body") + "\n\n" +
 		"<b>" + p.T("reauth_steps_title") + "</b>\n" +
 		"1. " + p.T("reauth_step_edit", "Command", editCmd) + "\n" +
-		"2. " + p.T("reauth_step_consent") + "\n" +
-		"3. " + p.T("reauth_step_restart", "Command", "<code>email-agent run</code>") + "\n\n" +
+		"2. " + p.T("reauth_step_consent") + "\n\n" +
 		"<i>" + p.T("reauth_note_testing") + "</i>"
+}
+
+// accountLabel names the mailbox for the owner: "Name (email)", or the email
+// alone when there is no distinct name.
+func (s *Scheduler) accountLabel() string {
+	if s.cfg.AccountName != "" && s.cfg.AccountName != s.cfg.AccountEmail {
+		return fmt.Sprintf("%s (%s)", s.cfg.AccountName, s.cfg.AccountEmail)
+	}
+	return s.cfg.AccountEmail
 }
 
 func (s *Scheduler) poll(ctx context.Context) error {

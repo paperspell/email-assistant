@@ -108,3 +108,49 @@ func TestReauthAlertText_UsesEmailWhenNameEmpty(t *testing.T) {
 	assert.Contains(t, txt, "Account: solo@example.com")
 	assert.False(t, strings.Contains(txt, "()"), "no empty name parens")
 }
+
+func TestReauthRecovered_TellsTheOwnerOnceAfterAnAlert(t *testing.T) {
+	al := &mockAlerter{}
+	s := newAlertScheduler(al)
+	ctx := context.Background()
+
+	s.alertReauthIfNeeded(ctx, reauthErr())
+	s.reauthRecovered(ctx) // first good poll after re-authorization
+	s.reauthRecovered(ctx) // later polls stay quiet
+
+	assert.Equal(t, 2, al.count())
+	assert.Contains(t, al.texts[1], "✅")
+	assert.Contains(t, al.texts[1], "Personal (me@example.com)")
+	assert.Contains(t, al.texts[1], "restored")
+	assert.False(t, s.reauthAlerted, "a later expiry must alert again")
+}
+
+func TestReauthRecovered_SilentWithoutAnEarlierAlert(t *testing.T) {
+	al := &mockAlerter{}
+	s := newAlertScheduler(al)
+
+	s.reauthRecovered(context.Background())
+
+	assert.Equal(t, 0, al.count())
+}
+
+func TestReauthRecovered_SendFailureStillClearsTheState(t *testing.T) {
+	al := &mockAlerter{}
+	s := newAlertScheduler(al)
+	s.alertReauthIfNeeded(context.Background(), reauthErr())
+	al.err = errors.New("telegram down")
+
+	s.reauthRecovered(context.Background())
+
+	assert.False(t, s.reauthAlerted, "the mailbox works again; the next expiry must still alert")
+}
+
+func TestReauthAlertText_NoRestartStepAndOneWarningSign(t *testing.T) {
+	// The token source reads the new token from storage on the next poll, so
+	// restarting the daemon is not a step; the catalog title has its own ⚠️.
+	txt := newAlertScheduler(nil).reauthAlertText()
+
+	assert.NotContains(t, txt, "email-agent run")
+	assert.NotContains(t, txt, "3. ")
+	assert.Equal(t, 1, strings.Count(txt, "⚠️"))
+}
