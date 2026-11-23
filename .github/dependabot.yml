@@ -1,0 +1,18 @@
+# Version updates for the GitHub Actions the workflows pin by commit SHA. Dependabot moves the SHA
+# and the version comment beside it together. A week of cooldown lets a bad or hijacked release be
+# noticed and pulled before it lands here.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      actions:
+        patterns:
+          - "*"
